@@ -1,0 +1,3 @@
+Desde esta misma pantalla podemos descargar el informe en PDF. Este documento es el que el usuario puede guardar, imprimir o compartir.
+
+Tiene la misma estructura que una evaluación oficial de la ANCCE y está pensado para que sea fácil de leer tanto para el usuario como para terceros.

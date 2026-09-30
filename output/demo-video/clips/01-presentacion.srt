@@ -1,0 +1,17 @@
+00:00:00,000 --> 00:00:04,800
+Bienvenido a tu jueza de IA para Pura Raza Española.
+
+00:00:04,800 --> 00:00:09,600
+En este vídeo veras cómo un usuario usa la plataforma de principio a fin.
+
+00:00:09,600 --> 00:00:13,800
+Actualmente es una demostración pensada para beta testers:
+
+00:00:13,800 --> 00:00:17,200
+Primero entramos con una cuenta de cliente.
+
+00:00:17,200 --> 00:00:22,000
+Una vez dentro, estamos ya en un entorno privado donde solo tu veras tus caballos.
+
+00:00:22,000 --> 00:00:28,839
+Todo está pensado para que el usuario sepa en cada momento dónde está y qué puede hacer, pero os guiaremos por todo el proceso.

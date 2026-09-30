@@ -1,0 +1,7 @@
+file 'C:\Users\ferra\OneDrive\Escritorio\Documentos\GitHub\HorseAI\JudgePREAI\marketing\output\demo-video\mobile\clips\01-presentacion.mp4'
+file 'C:\Users\ferra\OneDrive\Escritorio\Documentos\GitHub\HorseAI\JudgePREAI\marketing\output\demo-video\mobile\clips\02-crear-ficha.mp4'
+file 'C:\Users\ferra\OneDrive\Escritorio\Documentos\GitHub\HorseAI\JudgePREAI\marketing\output\demo-video\mobile\clips\03-evaluacion.mp4'
+file 'C:\Users\ferra\OneDrive\Escritorio\Documentos\GitHub\HorseAI\JudgePREAI\marketing\output\demo-video\mobile\clips\04-descargar-informe.mp4'
+file 'C:\Users\ferra\OneDrive\Escritorio\Documentos\GitHub\HorseAI\JudgePREAI\marketing\output\demo-video\mobile\clips\05-historial.mp4'
+file 'C:\Users\ferra\OneDrive\Escritorio\Documentos\GitHub\HorseAI\JudgePREAI\marketing\output\demo-video\mobile\clips\06-cuenta.mp4'
+file 'C:\Users\ferra\OneDrive\Escritorio\Documentos\GitHub\HorseAI\JudgePREAI\marketing\output\demo-video\mobile\clips\07-cierre.mp4'

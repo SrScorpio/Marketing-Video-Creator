@@ -1,0 +1,35 @@
+{
+  "baseUrl": "https://dev.judgepreai.com",
+  "video": {
+    "width": 1080,
+    "height": 1920
+  },
+  "horse": "Destacado Nadales II",
+  "timeline": [
+    {
+      "name": "01-home-start",
+      "seconds": 0.911
+    },
+    {
+      "name": "01-login-transition",
+      "seconds": 12.28
+    },
+    {
+      "name": "01-login-submit",
+      "seconds": 19.708
+    },
+    {
+      "name": "01-login-done",
+      "seconds": 21.917,
+      "url": "https://dev.judgepreai.com/mis-caballos"
+    },
+    {
+      "name": "02-create-start",
+      "seconds": 21.917
+    },
+    {
+      "name": "02-create-submit",
+      "seconds": 40.017
+    }
+  ]
+}

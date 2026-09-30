@@ -1,0 +1,11 @@
+00:00:00,000 --> 00:00:08,000
+Evaluación de un caballo:
+
+00:00:08,000 --> 00:00:28,000
+Una vez creada la ficha, vamos directamente a evaluar ese ejemplar. JudgePREAI ya trae precargado el caballo seleccionado. Podemos confirmar la imagen de referencia o subir otra foto. En este caso usamos la que ya teníamos. Pulsamos "Evaluar" y el sistema lanza el análisis.
+
+00:00:28,000 --> 00:00:38,000
+En pocos segundos aparece el resultado. Vemos la puntuación global, un resumen visual y la ficha ANCCE adaptada a foto fija.
+
+00:00:38,000 --> 00:00:45,165
+Las regiones de movimiento aparecen como "no evaluado", lo cual es correcto porque estamos usando solo una imagen. El resto de la morfología sí se valora y queda reflejado de forma clara y profesional.

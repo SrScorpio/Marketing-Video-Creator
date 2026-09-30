@@ -1,0 +1,5 @@
+00:00:00,000 --> 00:00:05,000
+Crear Ficha de caballos:
+
+00:00:05,000 --> 00:00:28,865
+A continuación creamos la ficha de un ejemplar. En este caso usamos los datos de "Destacado Nadales II". Rellenamos los campos principales: nombre, sexo, capa, fecha de nacimiento, registro si lo tenemos, microchip, ganadería y una breve descripción. También subimos una imagen de referencia del caballo. Esta imagen se guarda en la ficha y sirve como referencia visual para futuras evaluaciones.

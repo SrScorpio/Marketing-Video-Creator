@@ -1,0 +1,8 @@
+00:00:00,000 --> 00:00:05,000
+Tu cuenta:
+
+00:00:05,000 --> 00:00:13,000
+En esta sección puedes editar opciones de tu cuenta, como el nombre, la contraseña o los avisos que quieras recibir, así mismo podrás ver el histórico de consumo de créditos.
+
+00:00:13,000 --> 00:00:20,088
+Además para respetar tu privacidad puedes solicitar la eliminación de tu cuenta y toda tu información cuando lo creas necesario.

@@ -1,0 +1,37 @@
+Bienvenido a tu jueza de IA para Pura Raza Española.
+
+En este vídeo veras cómo un usuario usa la plataforma de principio a fin. Actualmente es una demostración pensada para beta testers:
+
+Primero entramos con una cuenta de cliente. 
+
+Una vez dentro, estamos ya en un entorno privado donde solo tu veras tus caballos. 
+
+Todo está pensado para que el usuario sepa en cada momento dónde está y qué puede hacer, pero os guiaremos por todo el proceso.
+
+Ficha de caballo:
+A continuación mostramos una ficha de ejemplar ya autorizada para la demostración. En este caso vemos los datos de "Destacado Nadales II" y su imagen de referencia, sin crear ni modificar datos durante la grabación.
+
+Evaluación de un caballo:
+Desde esa ficha mostramos la pantalla de evaluación en modo demostración. JudgePREAI ya trae precargado el caballo seleccionado. Podemos confirmar la imagen de referencia o subir otra foto. En este caso usamos la que ya teníamos, pero no pulsamos "Evaluar": así no se crea una evaluación nueva ni se consume saldo durante la grabación.
+
+Para enseñar el aspecto del resultado, abrimos un resultado preexistente autorizado como ejemplo. Se muestra como referencia y no se presenta como una evaluación nueva. La interfaz muestra la puntuación global, un resumen visual y una ficha orientativa adaptada a foto fija; no es una evaluación oficial de ANCCE.
+
+Las regiones de movimiento aparecen como "no evaluado", lo cual es correcto porque estamos usando solo una imagen. El resto de la morfología sí se valora y queda reflejado de forma clara y profesional.
+
+Desde esta misma pantalla podemos descargar el informe en PDF. Este documento es el que el usuario puede guardar, imprimir o compartir.
+
+El informe es una vista orientativa de la beta y no sustituye una evaluación oficial de ANCCE. Está pensado para que sea fácil de leer tanto para el usuario como para terceros.
+
+Historial:
+Además del PDF, el usuario puede volver a la ficha del caballo o consultar su historial. 
+
+En el historial se ven todas las evaluaciones realizadas, con la fecha, el nombre del ejemplar y un acceso rápido al detalle y al informe. Esto permite llevar un seguimiento ordenado de cada animal a lo largo del tiempo.
+
+El flujo que has visto es el núcleo de nuestra aplicación: consultar una ficha, revisar un resultado preexistente, descargar un informe y consultar el historial. Todo dentro de un entorno privado, rápido y orientado al usuario real y profesional que trabaja con ejemplares Pura Raza Española.
+
+Tu cuenta:
+Tambien puedes editar opciones de tu cuenta, como la contraseña o los avisos que quieras recibir y para respetar tu privacidad puedes solicitarlos la eliminacion de toda tu informacion cuando sea necesario.
+
+Gracias por participar en la beta. Te animamos a probar la aplicación con datos autorizados y a darnos tu opinión. Tu feedback es lo que nos ayuda a mejorar el producto de cara a la versión final.
+
+Si tienes cualquier duda o sugerencia, no dudes en contactarnos. Estaremos encantados de escucharte.

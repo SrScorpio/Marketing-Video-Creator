@@ -1,0 +1,8 @@
+00:00:00,000 --> 00:00:12,000
+El flujo que has visto es el núcleo de nuestra aplicación: crear ficha, evaluar, obtener resultado, descargar informe y consultar historial. Todo dentro de un entorno privado, rápido y orientado al usuario real y profesional que trabaja con ejemplares Pura Raza Española.
+
+00:00:12,000 --> 00:00:22,000
+Gracias por participar en la beta. Te animamos a probar la aplicación, crear tus propias fichas, hacer evaluaciones y darnos tu opinión. Tu feedback es lo que nos ayuda a mejorar el producto de cara a la versión final.
+
+00:00:22,000 --> 00:00:41,795
+Si tienes cualquier duda o sugerencia, no dudes en contactarnos. Estaremos encantados de escucharte.

@@ -1,0 +1,4 @@
+Historial:
+Además del PDF, el usuario puede volver a la ficha del caballo o consultar su historial.
+
+En el historial se ven todas las evaluaciones realizadas, con la fecha, el nombre del ejemplar y un acceso rápido al detalle y al informe. Esto permite llevar un seguimiento ordenado de cada animal a lo largo del tiempo.

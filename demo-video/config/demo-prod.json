@@ -1,0 +1,98 @@
+{
+  "baseUrl": "https://dev.judgepreai.com",
+  "env": {
+    "JIA_FORCE_REAL_AUTH": "true",
+    "AI_PROVIDER": "OPENROUTER",
+    "OPENROUTER_MODEL": "x-ai/grok-4",
+    "EVALUATION_COST": "1"
+  },
+  "force_ai_provider": "OPENROUTER",
+  "demoEvaluationId": "4c988201-208a-43ce-93b6-194525df8b28",
+  "note": "Target dev/staging. Ensure backend worker has real AI keys (not MOCK) for the E2E user. Use slowMo and long waits for demo.",
+  "video": {
+    "width": 1080,
+    "height": 1920,
+    "slowMo": 180,
+    "recordingsDir": "marketing/output/demo-video/raw",
+    "finalVideo": "marketing/output/demo-video/judgepreai-demo-beta.mp4",
+    "narrationWav": "marketing/output/demo-video/narration.wav",
+    "format": "vertical-9-16"
+  },
+  "variants": {
+    "mobile": {
+      "label": "Mobile 9:16",
+      "width": 1080,
+      "height": 1920,
+      "viewportWidth": 432,
+      "viewportHeight": 768,
+      "deviceScaleFactor": 3,
+      "format": "vertical-9-16",
+      "recordingsDir": "marketing/output/demo-video/raw/mobile",
+      "outputDir": "marketing/output/demo-video/mobile",
+      "videoFilter": "scale=1080:1920",
+      "phaseCuts": [
+        {
+          "name": "01-presentacion",
+          "sourceFile": "marketing/output/demo-video/raw/page@bec290c592972068701d64969eacb62a.webm",
+          "sourceStart": 0.612,
+          "sourceEnd": 24.5
+        },
+        {
+          "name": "02-crear-ficha",
+          "sourceFile": "marketing/output/demo-video/raw/page@bec290c592972068701d64969eacb62a.webm",
+          "sourceStart": 24.5,
+          "sourceEnd": 53.0
+        },
+        {
+          "name": "03-evaluacion",
+          "sourceFile": "marketing/output/demo-video/raw/page@6290f0e7ec9ca822fc3d7fb097ae7162.webm",
+          "sourceStart": 57.704,
+          "sourceEnd": 100.5
+        },
+        {
+          "name": "04-descargar-informe",
+          "sourceFile": "marketing/output/demo-video/raw/page@6290f0e7ec9ca822fc3d7fb097ae7162.webm"
+        },
+        {
+          "name": "05-historial",
+          "sourceFile": "marketing/output/demo-video/raw/page@6290f0e7ec9ca822fc3d7fb097ae7162.webm"
+        },
+        {
+          "name": "06-cuenta",
+          "sourceFile": "marketing/output/demo-video/raw/page@6290f0e7ec9ca822fc3d7fb097ae7162.webm"
+        },
+        {
+          "name": "07-cierre",
+          "sourceFile": "marketing/output/demo-video/raw/page@6290f0e7ec9ca822fc3d7fb097ae7162.webm"
+        }
+      ]
+    },
+    "desktop": {
+      "label": "Desktop 16:9",
+      "width": 1920,
+      "height": 1080,
+      "format": "horizontal-16-9",
+      "recordingsDir": "marketing/output/demo-video/raw/desktop",
+      "outputDir": "marketing/output/demo-video/desktop",
+      "videoFilter": "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"
+    }
+  },
+  "auth": {
+    "emailEnv": "E2E_USER_EMAIL",
+    "passwordEnv": "E2E_USER_PASSWORD",
+    "targetEnv": "staging"
+  },
+  "horse": {
+    "name": "Destacado Nadales II",
+    "gender": "Macho",
+    "color": "",
+    "birthDate": "2020-01-01",
+    "registry": "",
+    "microchip": "",
+    "studFarm": "CORTIJO LA DUEÑA",
+    "sire": "",
+    "dam": "",
+    "description": "Ejemplar PRE usado como demo guiada para beta testers.",
+    "referenceImage": "tests/playwright/Destacado Nadales II.jpeg"
+  }
+}

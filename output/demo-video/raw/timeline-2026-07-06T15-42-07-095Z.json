@@ -1,0 +1,90 @@
+{
+  "baseUrl": "https://dev.judgepreai.com",
+  "video": {
+    "width": 1080,
+    "height": 1920
+  },
+  "horse": "Destacado Nadales II",
+  "timeline": [
+    {
+      "name": "01-home-start",
+      "seconds": 0.612
+    },
+    {
+      "name": "01-login-transition",
+      "seconds": 11.963
+    },
+    {
+      "name": "01-login-submit",
+      "seconds": 19.35
+    },
+    {
+      "name": "01-login-done",
+      "seconds": 21.578,
+      "url": "https://dev.judgepreai.com/mis-caballos"
+    },
+    {
+      "name": "02-create-start",
+      "seconds": 21.578
+    },
+    {
+      "name": "02-create-submit",
+      "seconds": 39.661
+    },
+    {
+      "name": "02-create-done",
+      "seconds": 44.743,
+      "horseId": "953b38bb-d28a-4ed0-b6bb-c9bbefe4fe9b"
+    },
+    {
+      "name": "03-eval-start",
+      "seconds": 44.744,
+      "horseId": "953b38bb-d28a-4ed0-b6bb-c9bbefe4fe9b"
+    },
+    {
+      "name": "03-eval-submit",
+      "seconds": 56.775
+    },
+    {
+      "name": "03-eval-loading-visible",
+      "seconds": 60.999
+    },
+    {
+      "name": "03-eval-result",
+      "seconds": 241.859,
+      "url": "https://dev.judgepreai.com/evaluacion?horseId=953b38bb-d28a-4ed0-b6bb-c9bbefe4fe9b"
+    },
+    {
+      "name": "04-pdf-start",
+      "seconds": 241.859
+    },
+    {
+      "name": "04-pdf-done",
+      "seconds": 244.067
+    },
+    {
+      "name": "05-history-start",
+      "seconds": 244.067
+    },
+    {
+      "name": "05-history-done",
+      "seconds": 253.943
+    },
+    {
+      "name": "06-account-start",
+      "seconds": 253.943
+    },
+    {
+      "name": "06-account-done",
+      "seconds": 260.32
+    },
+    {
+      "name": "07-close-start",
+      "seconds": 260.32
+    },
+    {
+      "name": "07-close-done",
+      "seconds": 266.826
+    }
+  ]
+}

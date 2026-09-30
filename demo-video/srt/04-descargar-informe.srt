@@ -1,0 +1,5 @@
+00:00:00,000 --> 00:00:10,000
+Desde esta misma pantalla podemos descargar el informe en PDF. Este documento es el que el usuario puede guardar, imprimir o compartir.
+
+00:00:10,000 --> 00:00:18,155
+Tiene la misma estructura que una evaluación oficial de la ANCCE y está pensado para que sea fácil de leer tanto para el usuario como para terceros.
