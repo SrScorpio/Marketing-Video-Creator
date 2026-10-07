@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "create prd.json",
+			"type": "shell",
+			"command": "echo 'done'"
+		},
+		{
+			"label": "compile",
+			"type": "shell",
+			"command": "npm run compile",
+			"isBackground": false
+		}
+	]
+}

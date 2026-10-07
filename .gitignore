@@ -1,0 +1,7 @@
+# Agent working state
+.ralph/
+
+# OS
+.DS_Store
+Thumbs.db
+

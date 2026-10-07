@@ -1,0 +1,251 @@
+{
+  "name": "marketing-video-creator",
+  "displayName": "Marketing Video Creator",
+  "description": "Genera vídeos de demo para aplicaciones web capturando flujos con Playwright, añadiendo narración TTS y montando el resultado con FFmpeg.",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "marketing",
+    "video",
+    "demo",
+    "playwright",
+    "tts",
+    "ffmpeg"
+  ],
+  "activationEvents": [
+    "onCommand:marketing-video-creator.startDemo",
+    "onCommand:marketing-videoCreator.openPanel"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "marketing-video-creator.startDemo",
+        "title": "Marketing Video Creator: Iniciar Demo",
+        "icon": "$(play)"
+      },
+      {
+        "command": "marketing-video-creator.openPanel",
+        "title": "Marketing Video Creator: Abrir Panel",
+        "icon": "$(output)"
+      },
+      {
+        "command": "marketing-video-creator.exportMobile",
+        "title": "Marketing Video Creator: Exportar Mobile (1080x1920)",
+        "icon": "$(device-mobile)"
+      }
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "marketing-video-creator.startDemo",
+          "when": "view == marketingVideoCreatorView",
+          "group": "inline"
+        }
+      ]
+    },
+    "views": {
+      "marketingVideoCreatorView": [
+        {
+          "type": "webview",
+          "id": "marketingVideoCreatorPanel",
+          "name": "Panel de Control"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "marketingVideoCreatorView",
+          "title": "Marketing Video Creator",
+          "icon": "media/mvc-icon.svg"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Marketing Video Creator",
+      "properties": {
+        "marketingVideoCreator.apiKey": {
+          "type": "string",
+          "description": "API Key para el servicio de generación de vídeos (Nan.Builders u otro). Dejar vacío para modo local sin builders.",
+          "default": ""
+        },
+        "marketingVideoCreator.nanBuilders.enabled": {
+          "type": "boolean",
+          "description": "Activar Nan.Builders para generación de vídeo en la nube.",
+          "default": false
+        },
+        "marketingVideoCreator.nanBuilders.apiUrl": {
+          "type": "string",
+          "description": "URL del endpoint de Nan.Builders.",
+          "default": "https://api.nan.builders/v1"
+        },
+        "marketingVideoCreator.tts.provider": {
+          "type": "string",
+          "enum": ["sapi", "edge-tts", "external"],
+          "description": "Provider de TTS a utilizar. 'sapi' usa System.Speech.Synthesis (Microsoft Pablo en Windows), sin API key ni internet. 'edge-tts'/'external' pendientes de Fase 2.",
+          "default": "sapi"
+        },
+        "marketingVideoCreator.tts.voice": {
+          "type": "string",
+          "description": "Nombre de la voz TTS. Para SAPI en español: 'Microsoft Pablo'.",
+          "default": "Microsoft Pablo"
+        },
+        "marketingVideoCreator.tts.rate": {
+          "type": "number",
+          "description": "Velocidad de habla TTS (0.5 a 2.0).",
+          "default": 1.0
+        },
+        "marketingVideoCreator.tts.volume": {
+          "type": "number",
+          "description": "Volumen de la voz TTS (0 a 1).",
+          "default": 1.0
+        },
+        "marketingVideoCreator.stt.enabled": {
+          "type": "boolean",
+          "description": "Activar reconocimiento de voz para dictado de guiones.",
+          "default": false
+        },
+        "marketingVideoCreator.stt.engine": {
+          "type": "string",
+          "enum": ["sapi", "whisper", "external"],
+          "description": "Motor de STT.",
+          "default": "sapi"
+        },
+        "marketingVideoCreator.images.provider": {
+          "type": "string",
+          "enum": ["local", "unsplash", "pexels", "manual"],
+          "description": "Proveedor de imágenes para escenas. 'manual' requiere subir imágenes al proyecto.",
+          "default": "manual"
+        },
+        "marketingVideoCreator.playwright.autoInstall": {
+          "type": "boolean",
+          "description": "Instalar Playwright Chromium automáticamente la primera vez.",
+          "default": true
+        },
+        "marketingVideoCreator.playwright.browserPath": {
+          "type": "string",
+          "description": "Ruta personalizada al navegador Chromium de Playwright. Dejar vacío para usar la ruta por defecto.",
+          "default": ""
+        },
+        "marketingVideoCreator.playwright.viewportWidth": {
+          "type": "number",
+          "description": "Ancho del viewport para capturas.",
+          "default": 1920
+        },
+        "marketingVideoCreator.playwright.viewportHeight": {
+          "type": "number",
+          "description": "Alto del viewport para capturas.",
+          "default": 1080
+        },
+        "marketingVideoCreator.playwright.fps": {
+          "type": "number",
+          "description": "FPS de la captura.",
+          "default": 30
+        },
+        "marketingVideoCreator.ffmpeg.path": {
+          "type": "string",
+          "description": "Ruta al ejecutable de FFmpeg. Dejar vacío para usar el descargado automáticamente.",
+          "default": ""
+        },
+        "marketingVideoCreator.ffmpeg.autoDownload": {
+          "type": "boolean",
+          "description": "Descargar FFmpeg automáticamente si no se encuentra.",
+          "default": true
+        },
+        "marketingVideoCreator.output.directory": {
+          "type": "string",
+          "description": "Directorio de salida para vídeos generados.",
+          "default": "./output/demo-video"
+        },
+        "marketingVideoCreator.output.format": {
+          "type": "string",
+          "enum": ["mp4", "webm", "mov"],
+          "description": "Formato de salida por defecto.",
+          "default": "mp4"
+        },
+        "marketingVideoCreator.output.videoCodec": {
+          "type": "string",
+          "description": "Códec de vídeo para FFmpeg.",
+          "default": "libx264"
+        },
+        "marketingVideoCreator.output.audioCodec": {
+          "type": "string",
+          "description": "Códec de audio para FFmpeg.",
+          "default": "aac"
+        },
+        "marketingVideoCreator.variants.desktop.width": {
+          "type": "number",
+          "description": "Ancho de la variante desktop.",
+          "default": 1920
+        },
+        "marketingVideoCreator.variants.desktop.height": {
+          "type": "number",
+          "description": "Alto de la variante desktop.",
+          "default": 1080
+        },
+        "marketingVideoCreator.variants.mobile.width": {
+          "type": "number",
+          "description": "Ancho de la variante mobile.",
+          "default": 1080
+        },
+        "marketingVideoCreator.variants.mobile.height": {
+          "type": "number",
+          "description": "Alto de la variante mobile.",
+          "default": 1920
+        },
+        "marketingVideoCreator.phases.enabled": {
+          "type": "boolean",
+          "description": "Activar fases de vídeo (presentación, crear ficha, evaluación, etc.).",
+          "default": true
+        },
+        "marketingVideoCreator.phases.list": {
+          "type": "array",
+          "description": "Lista de fases del vídeo demo.",
+          "default": [
+            { "id": "01-presentacion", "label": "Presentación", "duration": 5 },
+            { "id": "02-crear-ficha", "label": "Crear Ficha", "duration": 10 },
+            { "id": "03-evaluacion", "label": "Evaluación", "duration": 10 },
+            { "id": "04-descargar-informe", "label": "Descargar Informe", "duration": 8 },
+            { "id": "05-historial", "label": "Historial", "duration": 7 },
+            { "id": "06-cuenta", "label": "Cuenta", "duration": 5 },
+            { "id": "07-cierre", "label": "Cierre", "duration": 5 }
+          ]
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./tsconfig.json && npm run compile:panel",
+    "compile:panel": "vite build --config vite.config.ts",
+    "watch": "tsc -watch -p ./tsconfig.json",
+    "watch:panel": "vite build --config vite.config.ts --watch",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "typescript": "^5.3.3",
+    "@vscode/test-cli": "^0.0.6",
+    "@vscode/test-electron": "^2.3.9",
+    "vite": "^5.0.12",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.56.0"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.41.2",
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}

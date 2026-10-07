@@ -1,0 +1,209 @@
+{
+  "version": "1.0.0",
+  "project": "Marketing Video Creator - VS Code Extension",
+  "description": "Extensión VS Code para generar vídeos de demo de aplicaciones web. Captura con Playwright, narración TTS (local o Nan.Builders Kokoro), subtítulos SRT (manual o Nan.Builders Whisper), montaje con FFmpeg. Dos variantes: mobile (9:16) y desktop (16:9).",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "title": "Scaffold de extensión VS Code",
+      "description": "Estructura completa del proyecto: package.json con schema de configuración, tsconfig, vite.config, entry point, panel React, servicios base, ADRs. Compilación limpia.",
+      "status": "done",
+      "acceptanceCriteria": [
+        "package.json con 27 propiedades de configuración",
+        "tsconfig.json y tsconfig.panel.json configurados",
+        "vite.config.ts para panel React",
+        "src/extension.ts con 3 comandos registrados",
+        "src/panel/App.tsx con 3 tabs (Config, Fases, Progreso)",
+        "src/services/ con 4 servicios base",
+        "src/config/ con settings y project config",
+        "src/utils/ con logger y validators",
+        "src/types/ con Phase y ProjectConfig",
+        "docs/adr/ con 4 ADRs",
+        "npm run compile sin errores ni warnings"
+      ],
+      "dependencies": [],
+      "labels": [
+        "scaffold",
+        "estructura"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "ISSUE-002",
+      "title": "TTS local (SAPI/Edge TTS)",
+      "description": "Implementación real de TtsService con SAPI (Microsoft Pablo) como provider por defecto. Integración con Nan.Builders Kokoro pendiente para Fase 2.",
+      "status": "in-progress",
+      "acceptanceCriteria": [
+        "TtsService con método initialize()",
+        "TtsService con método generate()",
+        "Soporte SAPI como provider por defecto",
+        "Configurable tts.provider en settings.json",
+        "Funciona sin API key ni internet"
+      ],
+      "dependencies": [],
+      "labels": [
+        "tts",
+        "audio"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "ISSUE-003",
+      "title": "FFmpeg builder",
+      "description": "Implementación real de FfmpegBuilder con auto-instalación, cut, mux, concat y buildMobileVideo.",
+      "status": "todo",
+      "acceptanceCriteria": [
+        "FfmpegBuilder con método initialize()",
+        "FfmpegBuilder con método cut()",
+        "FfmpegBuilder con método mux()",
+        "FfmpegBuilder con método concat()",
+        "FfmpegBuilder con método buildMobileVideo()",
+        "Auto-instalación de FFmpeg si no existe"
+      ],
+      "dependencies": [],
+      "labels": [
+        "ffmpeg",
+        "video"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "ISSUE-004",
+      "title": "Playwright capture",
+      "description": "Implementación real de PlaywrightCapture para grabar flujos demo con Chromium.",
+      "status": "todo",
+      "acceptanceCriteria": [
+        "PlaywrightCapture con método start()",
+        "PlaywrightCapture con método stop()",
+        "Grabación webm por fase",
+        "Configurable headless/headful",
+        "Soporte mobile/desktop viewport"
+      ],
+      "dependencies": [],
+      "labels": [
+        "playwright",
+        "captura"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "ISSUE-005",
+      "title": "Panel webview React",
+      "description": "Panel completo con tabs: Configuración, Fases, Progreso. Formularios interactivos y feedback visual.",
+      "status": "todo",
+      "acceptanceCriteria": [
+        "Tab Configuración con formulario URL",
+        "Tab Fases con lista editable",
+        "Tab Progreso con barra de estado",
+        "postMessage bidireccional con extension host",
+        "Temas VS Code CSS variables"
+      ],
+      "dependencies": [],
+      "labels": [
+        "ui",
+        "webview"
+      ],
+      "priority": "P1"
+    },
+    {
+      "id": "ISSUE-006",
+      "title": "Integración Nan.Builders Kokoro TTS",
+      "description": "Conectar TtsService con Nan.Builders Kokoro para generación de narración en la nube.",
+      "status": "todo",
+      "acceptanceCriteria": [
+        "KokoroClient con POST /v1/audio/speech",
+        "Configurable apiKey en settings.json",
+        "Fallback a TTS local si falla",
+        "Manejo de errores y retries"
+      ],
+      "dependencies": [
+        "ISSUE-002"
+      ],
+      "labels": [
+        "nan-builders",
+        "tts",
+        "api"
+      ],
+      "priority": "P1"
+    },
+    {
+      "id": "ISSUE-007",
+      "title": "Integración Nan.Builders Whisper STT",
+      "description": "Conectar generación de SRT con Nan.Builders Whisper para transcripción automática.",
+      "status": "todo",
+      "acceptanceCriteria": [
+        "WhisperClient con POST /v1/audio/transcriptions",
+        "Generación automática de SRT desde audio",
+        "Fallback a edición manual",
+        "Soporte idioma configurable"
+      ],
+      "dependencies": [
+        "ISSUE-006"
+      ],
+      "labels": [
+        "nan-builders",
+        "stt",
+        "srt"
+      ],
+      "priority": "P1"
+    },
+    {
+      "id": "ISSUE-008",
+      "title": "Pipeline completo end-to-end",
+      "description": "Orquestar captura -> TTS -> SRT -> FFmpeg en un flujo automático desde el panel.",
+      "status": "todo",
+      "acceptanceCriteria": [
+        "PhaseManager orquesta todo el flujo",
+        "Progreso visible en panel webview",
+        "Manejo de errores por fase",
+        "Reintentos y cancelación"
+      ],
+      "dependencies": [
+        "ISSUE-002",
+        "ISSUE-003",
+        "ISSUE-004",
+        "ISSUE-005"
+      ],
+      "labels": [
+        "pipeline",
+        "integración"
+      ],
+      "priority": "P1"
+    },
+    {
+      "id": "ISSUE-009",
+      "title": "Exportar variante desktop",
+      "description": "Soporte para exportar vídeo en formato desktop (1920x1080) además de mobile.",
+      "status": "todo",
+      "acceptanceCriteria": [
+        "buildDesktopVideo() en FfmpegBuilder",
+        "Configurable en settings.json",
+        "Output en output/demo-video/desktop/"
+      ],
+      "dependencies": [
+        "ISSUE-003"
+      ],
+      "labels": [
+        "desktop",
+        "video"
+      ],
+      "priority": "P2"
+    },
+    {
+      "id": "ISSUE-010",
+      "title": "Definir el siguiente requerimiento",
+      "description": "¿Qué se debe construir o mejorar a continuación? Opciones: (1) Playwright capture, (2) Panel webview, (3) Pipeline end-to-end, (4) Nan.Builders Kokoro, (5) Nan.Builders Whisper.",
+      "status": "todo",
+      "acceptanceCriteria": [
+        "Usuario decide prioridad",
+        "Documentar decisión en docs/"
+      ],
+      "dependencies": [],
+      "labels": [
+        "planificación",
+        "decisión-usuario"
+      ],
+      "priority": "P3"
+    }
+  ]
+}

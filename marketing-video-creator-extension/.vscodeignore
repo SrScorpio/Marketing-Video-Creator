@@ -1,0 +1,13 @@
+**/.vscode-tests*
+**/node_modules/*
+**/src/**
+**/media/**
+**/docs/**
+**/*.test.ts
+**/*.spec.ts
+**/.eslintrc*
+**/.prettierrc*
+**/tsconfig*.json
+**/vite.config.ts
+**/README.md
+**/.gitignore
