@@ -59,10 +59,42 @@ export function saveProjectConfig(workspaceFolder: vscode.WorkspaceFolder, confi
 }
 
 export function createDefaultConfig(workspaceFolder: vscode.WorkspaceFolder, url: string): ProjectConfig {
+  return createConfigFromSettings(workspaceFolder, url, []);
+}
+
+/** Fases por defecto cuando la configuración no aporta ninguna válida. */
+export const DEFAULT_PHASES: ProjectConfig['phases'] = [
+  { id: '01-presentacion', label: 'Presentación', duration: 5 },
+  { id: '02-crear-ficha', label: 'Crear Ficha', duration: 10 },
+  { id: '03-evaluacion', label: 'Evaluación', duration: 10 },
+  { id: '04-descargar-informe', label: 'Descargar Informe', duration: 8 },
+  { id: '05-historial', label: 'Historial', duration: 7 },
+  { id: '06-cuenta', label: 'Cuenta', duration: 5 },
+  { id: '07-cierre', label: 'Cierre', duration: 5 }
+];
+
+/**
+ * Construye la configuración del proyecto a partir de los ajustes de la
+ * extensión (`marketingVideoCreator.phases.list`), descartando entradas
+ * inválidas y aplicando las fases por defecto si no queda ninguna.
+ */
+export function createConfigFromSettings(
+  workspaceFolder: vscode.WorkspaceFolder,
+  url: string,
+  phases: Array<Record<string, unknown>>
+): ProjectConfig {
+  const mapped = phases
+    .map((phase, index) => ({
+      id: typeof phase.id === 'string' ? phase.id : `phase-${index + 1}`,
+      label: typeof phase.label === 'string' ? phase.label : `Fase ${index + 1}`,
+      duration: typeof phase.duration === 'number' ? phase.duration : 10
+    }))
+    .filter(phase => isValidPhaseId(phase.id) && isValidDuration(phase.duration));
+
   return {
     name: path.basename(workspaceFolder.uri.fsPath),
     url,
-    phases: [],
+    phases: mapped.length > 0 ? mapped : DEFAULT_PHASES,
     outputDir: './output/demo-video',
     variant: 'desktop'
   };

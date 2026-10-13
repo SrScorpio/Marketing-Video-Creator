@@ -1,227 +1,343 @@
 /**
- * Componente principal del panel webview.
+ * Panel de control del webview.
+ *
+ * Se comunica con el extension host mediante `acquireVsCodeApi()`
+ * (window.postMessage NO llega al host).
+ *
+ * Nota: @vscode/webview-ui-toolkit está deprecado y sus tipos React son
+ * incompletos; se usan alias `any` para los componentes para no romper el
+ * type-check del proyecto.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   VSCodeButton,
-  VSCodeTextField,
+  VSCodeCheckbox,
   VSCodeDropdown,
-  VSCodeOption
+  VSCodeOption,
+  VSCodeTextField
 } from '@vscode/webview-ui-toolkit/react';
 
-interface AppConfig {
-  apiKey: string;
-  url: string;
-  ttsProvider: string;
-  ttsLanguage: string;
-  recordingMode: string;
-  resolution: string;
-  phases: Array<{ id: string; label: string; duration: number }>;
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const TextField: any = VSCodeTextField;
+const Dropdown: any = VSCodeDropdown;
+const Option: any = VSCodeOption;
+const Button: any = VSCodeButton;
+const Checkbox: any = VSCodeCheckbox;
+
+interface VsCodeApi {
+  postMessage(message: unknown): void;
+  getState(): unknown;
+  setState(state: unknown): void;
 }
 
-interface ProgressState {
-  status: 'idle' | 'running' | 'done' | 'error';
+declare function acquireVsCodeApi(): VsCodeApi;
+
+interface PhaseProgressShape {
+  status: 'idle' | 'running' | 'done' | 'error' | 'cancelled';
   progress: number;
-  logs: string[];
-  videoPath?: string;
+  phases: Array<{
+    id: string;
+    label: string;
+    status: string;
+    progress: number;
+    clipPath?: string;
+    error?: string;
+  }>;
 }
+
+const vscode: VsCodeApi =
+  typeof acquireVsCodeApi === 'function'
+    ? acquireVsCodeApi()
+    : { postMessage: () => undefined, getState: () => undefined, setState: () => undefined };
 
 export default function App() {
-  const [config, setConfig] = useState<AppConfig>({
-    apiKey: '',
-    url: '',
-    ttsProvider: 'sapi',
-    ttsLanguage: 'espanol',
-    recordingMode: 'headful',
-    resolution: 'mobile',
-    phases: []
-  });
   const [activeTab, setActiveTab] = useState(0);
-  const [progress, setProgress] = useState<ProgressState>({
-    status: 'idle',
-    progress: 0,
-    logs: [],
-    videoPath: undefined
-  });
+  const [url, setUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [ttsProvider, setTtsProvider] = useState('sapi');
+  const [ttsVoice, setTtsVoice] = useState('Microsoft Pablo');
+  const [headless, setHeadless] = useState(true);
+  const [variant, setVariant] = useState<'desktop' | 'mobile'>('desktop');
+  const [phases, setPhases] = useState<Array<{ id: string; label: string; duration: number }>>([]);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [progress, setProgress] = useState<PhaseProgressShape>({ status: 'idle', progress: 0, phases: [] });
+  const [videoPath, setVideoPath] = useState<string>('');
+
+  const appendLog = useCallback((message: string) => {
+    setLogs(previous => [...previous.slice(-199), message]);
+  }, []);
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
-      const msg = event.data;
-      if (msg.type === 'config') {
-        setConfig(prev => ({ ...prev, ...msg.data }));
-      }
-      if (msg.type === 'progress') {
-        setProgress(prev => ({ ...prev, ...msg.data }));
-      }
-      if (msg.type === 'videoReady') {
-        setProgress(prev => ({ ...prev, status: 'done', videoPath: msg.data.path }));
+      const message = event.data as { type: string; data: any };
+
+      switch (message.type) {
+        case 'settings':
+          setApiKey(message.data.settings?.apiKey ?? '');
+          setTtsProvider(message.data.settings?.ttsProvider ?? 'sapi');
+          setTtsVoice(message.data.settings?.ttsVoice ?? 'Microsoft Pablo');
+          setHeadless(message.data.settings?.playwrightHeadless ?? true);
+          if (message.data.project) {
+            setUrl(message.data.project.url ?? '');
+            setPhases(message.data.project.phases ?? []);
+            setVariant(message.data.project.variant === 'mobile' ? 'mobile' : 'desktop');
+          }
+          setProgress(message.data.progress ?? { status: 'idle', progress: 0, phases: [] });
+          break;
+
+        case 'state':
+          setProgress(message.data);
+          if (message.data.status === 'running') {
+            setActiveTab(2);
+          }
+          break;
+
+        case 'log':
+          appendLog(String(message.data));
+          break;
+
+        case 'videoReady':
+          setVideoPath(message.data.path);
+          appendLog(`Vídeo generado (${message.data.variant}): ${message.data.path}`);
+          break;
+
+        default:
+          break;
       }
     };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, []);
 
-  const vscodePostMessage = (data: any) => { window.postMessage(data); };
+    window.addEventListener('message', handler);
+    vscode.postMessage({ type: 'ready' });
+
+    return () => window.removeEventListener('message', handler);
+  }, [appendLog]);
+
+  const send = (type: string, data?: unknown) => vscode.postMessage({ type, data });
+
+  const running = progress.status === 'running';
 
   const handleSaveConfig = () => {
-    vscodePostMessage({ type: 'saveConfig', data: config });
-    vscode.window.showInformationMessage('Configuración guardada');
-  };
-
-  const handleStartCapture = () => {
-    setProgress({ status: 'running', progress: 0, logs: ['Iniciando captura...'] });
-    vscodePostMessage({ type: 'startCapture' });
-  };
-
-  const handleBuildVideo = () => {
-    setProgress({ status: 'running', progress: 0, logs: ['Montando vídeo...'] });
-    vscodePostMessage({ type: 'buildVideo' });
+    send('saveConfig', { url, apiKey, ttsProvider, ttsVoice, headless });
+    appendLog('Configuración enviada para guardar.');
   };
 
   const handleAddPhase = () => {
-    const nextId = 'PHASE-' + (config.phases.length + 1);
-    setConfig(prev => ({ ...prev, phases: [...prev.phases, { id: nextId, label: 'Fase demo ' + nextId, duration: 30 }] }));
+    setPhases(previous => [
+      ...previous,
+      { id: `fase-${previous.length + 1}`, label: `Fase ${previous.length + 1}`, duration: 10 }
+    ]);
+  };
+
+  const handleChangePhase = (id: string, field: 'label' | 'duration', value: string | number) => {
+    setPhases(previous => previous.map(phase => (phase.id === id ? { ...phase, [field]: value } : phase)));
   };
 
   const handleSavePhases = () => {
-    vscodePostMessage({ type: 'savePhases', data: config.phases });
-    vscode.window.showInformationMessage('Fases guardadas');
-  };
-
-  const handleDeletePhase = (id: string) => {
-    setConfig(prev => ({ ...prev, phases: prev.phases.filter(p => p.id !== id) }));
-  };
-
-  const handleChangePhase = (id: string, field: string, value: string | number) => {
-    setConfig(prev => ({
-      ...prev,
-      phases: prev.phases.map(p => (p.id === id ? { ...p, [field]: value } : p))
-    }));
+    send('savePhases', phases);
+    appendLog(`${phases.length} fase(s) enviadas para guardar.`);
   };
 
   return (
     <div style={{ padding: '16px', fontFamily: 'var(--vscode-font-family)' }}>
-      <h2 style={{ color: 'var(--vscode-foreground)' }}>Marketing Video Creator</h2>
+      <h2>Marketing Video Creator</h2>
 
-      {/* Tabs manuales */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
         {['Configuración', 'Fases', 'Progreso'].map((tab, index) => (
-          <button
+          <Button
             key={tab}
-            style={{
-              padding: '8px 16px',
-              background: index === activeTab ? 'var(--vscode-button-background)' : 'var(--vscode-background)',
-              color: index === activeTab ? 'var(--vscode-button-foreground)' : 'var(--vscode-text-foreground)',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: index === activeTab ? 'bold' : 'normal'
-            }}
+            appearance={index === activeTab ? 'primary' : 'secondary'}
             onClick={() => setActiveTab(index)}
           >
             {tab}
-          </button>
+          </Button>
         ))}
       </div>
 
-      <div style={{ marginTop: '16px' }}>
-        {/* Tab 1: Configuración */}
-        {activeTab === 0 && (
-          <div>
-            <VSCodeTextField label="URL de la app" placeholder="https://ejemplo.com"
-              value={config.url}
-              onChange={(e: any) => setConfig(prev => ({ ...prev, url: e.target.value }))}
-              style={{ width: '100%', display: 'block', marginBottom: '12px' }} />
-            <VSCodeTextField label="API Key (Nan.Builders)" placeholder="tu API Key"
-              value={config.apiKey}
-              onChange={(e: any) => setConfig(prev => ({ ...prev, apiKey: e.target.value }))}
-              style={{ width: '100%', display: 'block', marginBottom: '12px' }} />
-            <VSCodeDropdown label="Motor TTS" value={config.ttsProvider}
-              onChange={(e: any) => setConfig(prev => ({ ...prev, ttsProvider: e.target.value }))}
-              style={{ width: '100%', display: 'block', marginBottom: '12px' }}>
-              <VSCodeOption value="sapi">SAPI (local) - Microsoft Pablo</VSCodeOption>
-              <VSCodeOption value="nan-builders">Nan.Builders Kokoro</VSCodeOption>
-            </VSCodeDropdown>
-            <VSCodeDropdown label="Resolución" value={config.resolution}
-              onChange={(e: any) => setConfig(prev => ({ ...prev, resolution: e.target.value }))}
-              style={{ width: '100%', display: 'block', marginBottom: '12px' }}>
-              <VSCodeOption value="mobile">Mobile (1080x1920)</VSCodeOption>
-              <VSCodeOption value="desktop">Desktop (1920x1080)</VSCodeOption>
-            </VSCodeDropdown>
-            <VSCodeButton onClick={handleSaveConfig} style={{ marginTop: '12px' }}>Guardar configuración</VSCodeButton>
+      {activeTab === 0 && (
+        <div>
+          <TextField
+            label="URL de la app a demostrar"
+            value={url}
+            onChange={(event: any) => setUrl(event.target.value)}
+            style={{ width: '100%', display: 'block', marginBottom: '12px' }}
+          />
+          <TextField
+            label="API Key (Nan.Builders) — se guarda en los ajustes de usuario"
+            type="password"
+            value={apiKey}
+            onChange={(event: any) => setApiKey(event.target.value)}
+            style={{ width: '100%', display: 'block', marginBottom: '12px' }}
+          />
+          <Dropdown
+            label="Motor TTS"
+            value={ttsProvider}
+            onChange={(event: any) => setTtsProvider(event.target.value)}
+            style={{ width: '100%', display: 'block', marginBottom: '12px' }}
+          >
+            <Option value="sapi">SAPI local (Windows)</Option>
+            <Option value="edge-tts">edge-tts (pendiente)</Option>
+            <Option value="external">Externo (pendiente)</Option>
+          </Dropdown>
+          <TextField
+            label="Voz TTS"
+            value={ttsVoice}
+            onChange={(event: any) => setTtsVoice(event.target.value)}
+            style={{ width: '100%', display: 'block', marginBottom: '12px' }}
+          />
+          <Dropdown
+            label="Variante de grabación"
+            value={variant}
+            onChange={(event: any) => setVariant(event.target.value)}
+            style={{ width: '100%', display: 'block', marginBottom: '12px' }}
+          >
+            <Option value="desktop">Desktop (1920x1080)</Option>
+            <Option value="mobile">Mobile (1080x1920)</Option>
+          </Dropdown>
+          <Checkbox checked={headless} onChange={(event: any) => setHeadless(event.target.checked)}>
+            Capturar en modo headless
+          </Checkbox>
+          <div style={{ marginTop: '12px' }}>
+            <Button appearance="primary" onClick={handleSaveConfig}>
+              Guardar configuración
+            </Button>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Tab 2: Fases */}
-        {activeTab === 1 && (
-          <div>
-            <strong>Fases del vídeo</strong>
-            <VSCodeButton onClick={handleAddPhase} style={{ marginTop: '12px', marginBottom: '12px' }}>Añadir fase</VSCodeButton>
-            {config.phases.length === 0 && (
-              <p style={{ color: 'var(--vscode-warningForeground)' }}>No hay fases configuradas.</p>
-            )}
-            {config.phases.map(phase => (
-              <div key={phase.id} style={{ marginBottom: '8px', padding: '8px', background: 'var(--vscode-backgroundSecondary)', borderRadius: '4px' }}>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
-                  <strong>{phase.label}</strong>
-                  <span style={{ color: 'var(--vscode-descriptionForeground)' }}>({phase.duration}s)</span>
-                  <VSCodeButton onClick={() => handleDeletePhase(phase.id)} style={{ marginLeft: 'auto' }}>Eliminar</VSCodeButton>
-                </div>
-                <VSCodeTextField label="Nombre de fase" value={phase.label}
-                  onChange={(e: any) => handleChangePhase(phase.id, 'label', e.target.value)}
-                  style={{ width: '100%', display: 'block' }} />
-                <VSCodeTextField label="Duración (segundos)" type="number" value={phase.duration}
-                  onChange={(e: any) => handleChangePhase(phase.id, 'duration', Number(e.target.value))}
-                  style={{ width: '100%', display: 'block' }} />
+      {activeTab === 1 && (
+        <div>
+          <strong>Fases del vídeo</strong>
+          <div style={{ marginTop: '12px', marginBottom: '12px' }}>
+            <Button onClick={handleAddPhase}>Añadir fase</Button>{' '}
+            <Button onClick={handleSavePhases}>Guardar fases</Button>
+          </div>
+          {phases.length === 0 && <p>No hay fases configuradas.</p>}
+          {phases.map(phase => (
+            <div
+              key={phase.id}
+              style={{
+                marginBottom: '8px',
+                padding: '8px',
+                border: '1px solid var(--vscode-panel-border)',
+                borderRadius: '4px'
+              }}
+            >
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                <strong>{phase.label}</strong>
+                <span>({phase.duration}s)</span>
+                <Button
+                  appearance="secondary"
+                  style={{ marginLeft: 'auto' }}
+                  onClick={() => setPhases(previous => previous.filter(item => item.id !== phase.id))}
+                >
+                  Eliminar
+                </Button>
               </div>
-            ))}
-            <VSCodeButton onClick={handleSavePhases} style={{ marginTop: '12px', marginBottom: '12px' }}>Guardar fases</VSCodeButton>
-          </div>
-        )}
+              <TextField
+                label="Nombre de fase"
+                value={phase.label}
+                onChange={(event: any) => handleChangePhase(phase.id, 'label', event.target.value)}
+                style={{ width: '100%', display: 'block' }}
+              />
+              <TextField
+                label="Duración (segundos)"
+                value={String(phase.duration)}
+                onChange={(event: any) => handleChangePhase(phase.id, 'duration', Number(event.target.value) || 0)}
+                style={{ width: '100%', display: 'block' }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
-        {/* Tab 3: Progreso */}
-        {activeTab === 2 && (
-          <div>
-            {/* Barra de progreso */}
-            <div style={{ background: 'var(--vscode-backgroundSecondary)', height: '20px', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--vscode-borderRegion)', marginBottom: '16px' }}>
-              <div style={{
-                width: progress.progress + '%',
-                background: 'var(--vscode-text-foreground)',
+      {activeTab === 2 && (
+        <div>
+          <div
+            style={{
+              height: '20px',
+              borderRadius: '10px',
+              overflow: 'hidden',
+              border: '1px solid var(--vscode-panel-border)',
+              marginBottom: '16px'
+            }}
+          >
+            <div
+              style={{
+                width: `${progress.progress}%`,
+                background: 'var(--vscode-progressBar-background)',
                 height: '100%',
                 transition: 'width 0.3s ease'
-              }} />
-            </div>
-            <p style={{ textAlign: 'center', marginBottom: '16px' }}>
-              {progress.status === 'done' ? '¡Completada!' : progress.status === 'running' ? 'En progreso...' : 'En espera'}
-              <span style={{ fontWeight: 'bold' }} />
-            </p>
-            {progress.status === 'done' && progress.videoPath && (
-              <p style={{ color: 'var(--vscode-text-foreground)' }}>
-                Vídeo generado: <code>{progress.videoPath}</code>
-              </p>
-            )}
-            {/* Botones de captura */}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-              <VSCodeButton onClick={handleStartCapture} disabled={progress.status === 'running'}>
-                {progress.status === 'running' ? 'Capturando...' : 'Iniciar captura'}
-              </VSCodeButton>
-              <VSCodeButton onClick={handleBuildVideo} disabled={progress.status !== 'done'}>
-                Montar vídeo
-              </VSCodeButton>
-            </div>
-            {/* Log de eventos */}
-            <div style={{ marginTop: '16px', maxHeight: '200px', overflow: 'auto', background: 'var(--vscode-backgroundSecondary)', padding: '12px', borderRadius: '4px', fontFamily: 'var(--vscode-font-family-mono)', fontSize: '12px' }}>
-              {progress.logs.map((log, index) => (
-                <div key={index} style={{ marginBottom: '4px', color: 'var(--vscode-text-foreground)' }}>
-                  {['[' + (index + 1) + '] ' + ' ' + log]}
-                </div>
-              ))}
-              {progress.logs.length === 0 && <span style={{ color: 'var(--vscode-descriptionForeground)' }}>Sin eventos.</span>}
-            </div>
+              }}
+            />
           </div>
-        )}
-      </div>
+          <p>
+            Estado: <strong>{progress.status}</strong> ({progress.progress}%)
+          </p>
+
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            {progress.phases.map(phase => (
+              <li key={phase.id} style={{ marginBottom: '4px' }}>
+                {phase.status === 'done'
+                  ? '✅'
+                  : phase.status === 'error'
+                    ? '❌'
+                    : phase.status === 'cancelled'
+                      ? '⏹️'
+                      : '⏳'}{' '}
+                <strong>{phase.label}</strong> — {phase.status} ({phase.progress}%)
+                {phase.error ? <em> — {phase.error}</em> : null}
+              </li>
+            ))}
+            {progress.phases.length === 0 && <li>Sin fases: inicia la captura para ver el progreso.</li>}
+          </ul>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' }}>
+            <Button appearance="primary" onClick={() => send('startCapture')} disabled={running}>
+              {running ? 'Capturando…' : 'Iniciar captura'}
+            </Button>
+            <Button appearance="secondary" onClick={() => send('cancel')} disabled={!running}>
+              Cancelar
+            </Button>
+            <Button appearance="secondary" onClick={() => send('buildVideo')} disabled={running}>
+              Montar vídeo
+            </Button>
+            <Button appearance="secondary" onClick={() => send('exportMobile')} disabled={running}>
+              Exportar mobile
+            </Button>
+            <Button appearance="secondary" onClick={() => send('exportDesktop')} disabled={running}>
+              Exportar desktop
+            </Button>
+            <Button appearance="secondary" onClick={() => send('openOutputFolder')}>
+              Abrir carpeta
+            </Button>
+          </div>
+
+          {videoPath && (
+            <p>
+              Último vídeo: <code>{videoPath}</code>
+            </p>
+          )}
+
+          <div
+            style={{
+              marginTop: '16px',
+              maxHeight: '220px',
+              overflow: 'auto',
+              padding: '12px',
+              border: '1px solid var(--vscode-panel-border)',
+              borderRadius: '4px',
+              fontFamily: 'var(--vscode-editor-font-family)',
+              fontSize: '12px'
+            }}
+          >
+            {logs.map((log, index) => (
+              <div key={index}>{log}</div>
+            ))}
+            {logs.length === 0 && <span>Sin eventos.</span>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

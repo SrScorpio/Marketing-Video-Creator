@@ -1,441 +1,541 @@
 /**
  * Servicio de montaje de vídeo con FFmpeg.
- * Cut, mux, concat, buildMobile → MP4.
+ *
+ * Cut, mux, concat, normalización por fase y variantes desktop/mobile.
  * Auto-instalación de FFmpeg si no existe.
+ *
+ * Sin dependencias de VS Code: la configuración se inyecta en el constructor,
+ * de modo que el servicio es ejecutable y testeable en Node puro.
  */
 
-import * as child_process from "child_process";
-import * as crypto from "crypto";
-import * as fs from "fs";
-import * as http from "http";
-import * as https from "https";
-import * as os from "os";
-import * as path from "path";
-import * as zlib from "zlib";
-import { createLogger } from "../utils/logger";
-import { getExtensionSettings } from "../config/extension-settings";
+import * as child_process from 'child_process';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as http from 'http';
+import * as https from 'https';
+import * as os from 'os';
+import * as path from 'path';
+import { createLogger } from '../utils/logger';
+import {
+  Canvas,
+  buildConcatArgs,
+  buildConcatList,
+  buildCutArgs,
+  buildMuxArgs,
+  buildPhaseClipArgs,
+  buildProbeDurationArgs,
+  buildProbeStreamsArgs,
+  buildVariantArgs,
+  parseProbeDuration
+} from '../utils/ffmpeg-args';
 
-const logger = createLogger("ffmpeg-builder");
+const logger = createLogger('ffmpeg-builder');
 
-/** Opciones para buildDesktop/buildMobile */
-export interface FfmpegOptions {
-  inputFiles: string[];
-  outputPath: string;
-  variant?: "desktop" | "mobile";
+export interface FfmpegBuilderOptions {
+  /** Ruta explícita al ejecutable de FFmpeg. */
+  ffmpegPath?: string;
+  /** Ruta explícita al ejecutable de FFprobe. */
+  ffprobePath?: string;
+  /** Descargar FFmpeg si no se encuentra en el sistema. */
+  autoDownload?: boolean;
   videoCodec?: string;
   audioCodec?: string;
+  crf?: number;
+  preset?: string;
+  desktopCanvas?: Canvas;
+  mobileCanvas?: Canvas;
 }
 
-/**
- * Builder de vídeos con FFmpeg.
- * 
- * Proporciona métodos para:
- * - Cut: cortar vídeo por rango de tiempo
- * - Mux: mezclar audio con vídeo
- * - Concat: concatenar múltiples clips
- * - buildMobileVideo: escalar vídeo a resolución mobile (1080x1920)
- * 
- * Auto-instala FFmpeg si no existe y `ffmpeg.autoDownload` está habilitado.
- */
-export class FfmpegBuilder {
-  private ffmpegPath: string = "";
-  private initialized: boolean = false;
+export interface PhaseClipRequest {
+  videoInput: string;
+  audioInput?: string | null;
+  output: string;
+  canvas: Canvas;
+  /** Duración del vídeo grabado (se calcula con FFprobe si se omite). */
+  videoDurationSec?: number;
+  padVideoBySec?: number;
+  padAudioBySec?: number;
+}
 
-  /**
-   * Inicializa el builder: localiza o instala FFmpeg.
-   */
+export interface VideoStreams {
+  width?: number;
+  height?: number;
+  videoCodec?: string;
+  audioCodec?: string;
+  hasAudio: boolean;
+  durationSec: number | null;
+}
+
+const FFMPEG_RELEASE_URL = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip';
+
+export class FfmpegBuilder {
+  private ffmpegPath: string = '';
+  private ffprobePath: string = '';
+  private initialized: boolean = false;
+  private readonly autoDownload: boolean;
+  private readonly videoCodec: string;
+  private readonly audioCodec: string;
+  private readonly crf: number;
+  private readonly preset: string;
+  private readonly desktopCanvas: Canvas;
+  private readonly mobileCanvas: Canvas;
+  private readonly configuredPath?: string;
+  private readonly configuredProbePath?: string;
+
+  constructor(options: FfmpegBuilderOptions = {}) {
+    this.autoDownload = options.autoDownload ?? true;
+    this.videoCodec = options.videoCodec ?? 'libx264';
+    this.audioCodec = options.audioCodec ?? 'aac';
+    this.crf = options.crf ?? 23;
+    this.preset = options.preset ?? 'veryfast';
+    this.desktopCanvas = options.desktopCanvas ?? { width: 1920, height: 1080 };
+    this.mobileCanvas = options.mobileCanvas ?? { width: 1080, height: 1920 };
+    this.configuredPath = options.ffmpegPath || undefined;
+    this.configuredProbePath = options.ffprobePath || undefined;
+  }
+
+  get executablePath(): string {
+    return this.ffmpegPath;
+  }
+
+  get probePath(): string {
+    return this.ffprobePath;
+  }
+
+  /** Localiza (o instala) FFmpeg y FFprobe. Idempotente. */
   async initialize(): Promise<void> {
     if (this.initialized && this.ffmpegPath) {
       return;
     }
 
-    const settings = getExtensionSettings();
-
-    // 1. Si hay path configurado, usarlo directamente
-    if (settings.ffmpegPath) {
-      this.ffmpegPath = settings.ffmpegPath;
-      this.initialized = true;
-      logger.info(`FFmpeg usando path configurado: ${this.ffmpegPath}`);
+    if (this.configuredPath) {
+      this.setExecutables(this.configuredPath, this.configuredProbePath);
       return;
     }
 
-    // 2. Verificar si ffmpeg está en el PATH del sistema
-    const systemFfmpeg = this.findFfmpegInPath();
-    if (systemFfmpeg) {
-      this.ffmpegPath = systemFfmpeg;
-      this.initialized = true;
-      logger.info(`FFmpeg encontrado en PATH: ${this.ffmpegPath}`);
+    const found = FfmpegBuilder.findInPath('ffmpeg');
+    if (found) {
+      logger.info(`FFmpeg encontrado en PATH: ${found}`);
+      this.setExecutables(found, FfmpegBuilder.findInPath('ffprobe') ?? undefined);
       return;
     }
 
-    // 3. Si no existe y autoDownload está habilitado, descargar FFmpeg
-    if (settings.ffmpegAutoDownload) {
-      logger.info("FFmpeg no encontrado, iniciando descarga on-demand...");
-      await this.downloadAndInstallFfmpeg();
-      return;
+    if (!this.autoDownload) {
+      throw new Error(
+        'FFmpeg no encontrado en el PATH y la descarga automática está deshabilitada (marketingVideoCreator.ffmpeg.autoDownload).'
+      );
     }
 
-    // 4. Fallback a ffmpeg del PATH
-    logger.warn("FFmpeg no encontrado y autoDownload deshabilitado.");
-    this.ffmpegPath = "ffmpeg";
-    this.initialized = true;
+    if (process.platform !== 'win32') {
+      throw new Error(
+        'FFmpeg no encontrado en el PATH. Instálalo con el gestor de paquetes de tu sistema ' +
+          '(p. ej. `apt install ffmpeg` o `brew install ffmpeg`) o define marketingVideoCreator.ffmpeg.path.'
+      );
+    }
+
+    logger.info('FFmpeg no encontrado, iniciando descarga on-demand...');
+    await this.downloadAndInstallFfmpeg();
   }
 
-  /**
-   * Busca ffmpeg en el PATH del sistema.
-   */
-  private findFfmpegInPath(): string | null {
-    const pathEnv = process.env.PATH || "";
-    const pathDirs = pathEnv.split(path.delimiter);
+  /** Busca un ejecutable en el PATH (con o sin extensión .exe). */
+  static findInPath(binary: string): string | null {
+    const pathEnv = process.env.PATH || '';
+    const extensions = process.platform === 'win32' ? ['.exe', ''] : [''];
 
-    for (const dir of pathDirs) {
-      const winPath = path.join(dir, "ffmpeg.exe");
-      if (fs.existsSync(winPath)) {
-        return winPath;
+    for (const dir of pathEnv.split(path.delimiter)) {
+      if (!dir) {
+        continue;
       }
-      const unixPath = path.join(dir, "ffmpeg");
-      if (fs.existsSync(unixPath)) {
-        return unixPath;
+      for (const extension of extensions) {
+        const candidate = path.join(dir, binary + extension);
+        try {
+          if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+            return candidate;
+          }
+        } catch {
+          /* directorio ilegible: seguir */
+        }
       }
     }
+
     return null;
   }
 
-  /**
-   * Descarga FFmpeg desde gyan.dev y lo descomprime.
-   */
-  private async downloadAndInstallFfmpeg(): Promise<void> {
-    const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
-    const ffmpegDir = path.join(appData, "MarketingVideoCreator", "ffmpeg");
-    const zipPath = path.join(ffmpegDir, "ffmpeg-release-essentials.zip");
-
-    fs.mkdirSync(ffmpegDir, { recursive: true });
-
-    const downloadUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
-    logger.info(`Descargando FFmpeg desde: ${downloadUrl}`);
-    await this.downloadFile(downloadUrl, zipPath);
-
-    logger.info("Descomprimiendo FFmpeg...");
-    await this.unzipFile(zipPath, ffmpegDir);
-
-    try { fs.unlinkSync(zipPath); } catch { /* ignore */ }
-
-    const exePath = this.findFfmpegInDirectory(ffmpegDir);
-    if (exePath) {
-      this.ffmpegPath = exePath;
-      this.initialized = true;
-      logger.info(`FFmpeg instalado correctamente: ${this.ffmpegPath}`);
-    } else {
-      throw new Error("FFmpeg descargado pero no se encontró el ejecutable ffmpeg.exe");
+  private setExecutables(ffmpegPath: string, ffprobePath?: string): void {
+    if (!fs.existsSync(ffmpegPath)) {
+      throw new Error(`La ruta configurada de FFmpeg no existe: ${ffmpegPath}`);
     }
+
+    this.ffmpegPath = ffmpegPath;
+    this.ffprobePath =
+      ffprobePath ??
+      path.join(path.dirname(ffmpegPath), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
+
+    if (!fs.existsSync(this.ffprobePath)) {
+      logger.warn(`FFprobe no encontrado en ${this.ffprobePath}: la duración se estimará desde la configuración.`);
+      this.ffprobePath = '';
+    }
+
+    this.initialized = true;
   }
 
-  /**
-   * Busca el ejecutable ffmpeg.exe en un directorio y sus subdirectorios.
-   */
-  private findFfmpegInDirectory(dir: string): string | null {
+  /** Descarga el build de FFmpeg para Windows y lo descomprime. */
+  private async downloadAndInstallFfmpeg(): Promise<void> {
+    const installDir = path.join(
+      process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
+      'MarketingVideoCreator',
+      'ffmpeg'
+    );
+    const zipPath = path.join(installDir, 'ffmpeg-release-essentials.zip');
+
+    fs.mkdirSync(installDir, { recursive: true });
+    await this.downloadFile(FFMPEG_RELEASE_URL, zipPath);
+    await this.extractZip(zipPath, installDir);
+
+    try {
+      fs.unlinkSync(zipPath);
+    } catch {
+      /* el zip ya no está: nada que limpiar */
+    }
+
+    const executable = this.findBinaryRecursively(installDir, 'ffmpeg.exe');
+    if (!executable) {
+      throw new Error(`FFmpeg descargado en ${installDir} pero no se encontró ffmpeg.exe`);
+    }
+
+    this.setExecutables(executable);
+    logger.info(`FFmpeg instalado correctamente: ${this.ffmpegPath}`);
+  }
+
+  private findBinaryRecursively(dir: string, binary: string): string | null {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
 
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
-
       if (entry.isDirectory()) {
-        const nested = this.findFfmpegInDirectory(fullPath);
+        const nested = this.findBinaryRecursively(fullPath, binary);
         if (nested) {
           return nested;
         }
-      } else if (entry.name === "ffmpeg.exe") {
+      } else if (entry.name.toLowerCase() === binary.toLowerCase()) {
         return fullPath;
       }
     }
+
     return null;
   }
 
-  /**
-   * Descarga un archivo desde una URL.
-   */
-  private downloadFile(url: string, outputPath: string): Promise<void> {
+  private downloadFile(url: string, outputPath: string, redirects: number = 0): Promise<void> {
     return new Promise((resolve, reject) => {
-      const httpClient = url.startsWith("https") ? https : http;
+      if (redirects > 5) {
+        reject(new Error('Demasiadas redirecciones al descargar FFmpeg'));
+        return;
+      }
 
-      httpClient.get(url, { timeout: 30000 }, (response) => {
-        if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307) {
-          if (response.headers.location) {
-            this.downloadFile(response.headers.location, outputPath).then(resolve).catch(reject);
-            return;
-          }
+      const client = url.startsWith('https') ? https : http;
+      const request = client.get(url, { timeout: 60000 }, response => {
+        const status = response.statusCode ?? 0;
+
+        if (status >= 300 && status < 400 && response.headers.location) {
+          response.resume();
+          this.downloadFile(response.headers.location, outputPath, redirects + 1).then(resolve).catch(reject);
+          return;
         }
 
-        if (response.statusCode !== 200) {
-          reject(new Error(`Error al descargar FFmpeg: HTTP ${response.statusCode}`));
+        if (status !== 200) {
+          response.resume();
+          reject(new Error(`Error al descargar FFmpeg: HTTP ${status}`));
           return;
         }
 
         const fileStream = fs.createWriteStream(outputPath);
         response.pipe(fileStream);
-
-        fileStream.on("finish", () => {
+        fileStream.on('finish', () => fileStream.close(() => resolve()));
+        fileStream.on('error', error => {
           fileStream.close();
-          resolve();
+          reject(error);
         });
+      });
 
-        fileStream.on("error", (err) => {
-          fileStream.close();
-          reject(err);
-        });
-      }).on("error", (err) => {
-        reject(err);
-      }).on("timeout", () => {
-        reject(new Error("Tiempo de espera agotado al descargar FFmpeg"));
+      request.on('error', reject);
+      request.on('timeout', () => {
+        request.destroy(new Error('Tiempo de espera agotado al descargar FFmpeg'));
       });
     });
   }
 
   /**
-   * Descomprime un archivo ZIP.
+   * Descomprime un ZIP usando herramientas del sistema operativo.
+   *
+   * Antes se usaba `zlib.createUnzip()` (gzip) sobre un fichero ZIP y se
+   * abortaba si 7-Zip no estaba instalado, por lo que la auto-instalación de
+   * FFmpeg fallaba en una máquina Windows limpia. Ahora: PowerShell
+   * Expand-Archive en Windows y unzip/bsdtar en el resto.
    */
-  private unzipFile(zipPath: string, destDir: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const readStream = fs.createReadStream(zipPath);
-      const gunzip = zlib.createUnzip();
-      const extract = this.extractZip(readStream, gunzip, destDir);
+  async extractZip(zipPath: string, destinationDir: string): Promise<void> {
+    fs.mkdirSync(destinationDir, { recursive: true });
 
-      gunzip.on("error", (err) => {
-        readStream.close();
-        reject(err);
-      });
+    const attempts: Array<{ command: string; args: string[] }> =
+      process.platform === 'win32'
+        ? [
+            {
+              command: 'powershell',
+              args: [
+                '-NoProfile',
+                '-NonInteractive',
+                '-Command',
+                `Expand-Archive -LiteralPath '${zipPath.replace(/'/g, "''")}' -DestinationPath '${destinationDir.replace(/'/g, "''")}' -Force`
+              ]
+            },
+            { command: 'tar', args: ['-xf', zipPath, '-C', destinationDir] }
+          ]
+        : [
+            { command: 'unzip', args: ['-o', '-q', zipPath, '-d', destinationDir] },
+            { command: 'bsdtar', args: ['-xf', zipPath, '-C', destinationDir] },
+            { command: 'tar', args: ['-xf', zipPath, '-C', destinationDir] }
+          ];
 
-      extract.on("error", (err) => {
-        readStream.close();
-        reject(err);
-      });
+    const errors: string[] = [];
 
-      extract.on("finish", () => {
-        readStream.close();
-        resolve();
-      });
-    });
-  }
-
-  /**
-   * Extrae un archivo ZIP usando 7-Zip si está disponible.
-   */
-  private extractZip(readStream: fs.ReadStream, gunzip: zlib.Unzip, destDir: string): fs.WriteStream {
-    logger.warn("Descompresión ZIP: usando 7-Zip si disponible.");
-
-    if (this.isSevenZipAvailable()) {
-      return this.extractWithSevenZip(readStream, destDir);
-    }
-
-    throw new Error("No se puede descomprimir ZIP: instala 7-Zip en el PATH");
-  }
-
-  /**
-   * Verifica si 7z (7-Zip) está disponible en el PATH.
-   */
-  private isSevenZipAvailable(): boolean {
-    try {
-      const result = child_process.spawnSync("7z", ["--version"], {
-        stdio: "pipe",
-        timeout: 5000
-      });
-      return result.status === 0;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Extrae ZIP usando 7-Zip.
-   */
-  private extractWithSevenZip(readStream: fs.ReadStream, destDir: string): fs.WriteStream {
-    const tempZipPath = path.join(destDir, `temp-${crypto.randomBytes(8).toString("hex")}.zip`);
-
-    return readStream.pipe(fs.createWriteStream(tempZipPath))
-      .on("finish", () => {
-        const result = child_process.spawnSync("7z", ["x", tempZipPath, `-o${destDir}`, "-y"], {
-          stdio: "inherit",
-          timeout: 60000
+    for (const attempt of attempts) {
+      try {
+        const result = child_process.spawnSync(attempt.command, attempt.args, {
+          stdio: 'pipe',
+          timeout: 120000,
+          shell: false
         });
 
-        try { fs.unlinkSync(tempZipPath); } catch { /* ignore */ }
-
-        if (result.status !== 0) {
-          throw new Error("Error al extraer ZIP con 7z");
+        if (result.error) {
+          errors.push(`${attempt.command}: ${result.error.message}`);
+          continue;
         }
-      });
+
+        if (result.status === 0) {
+          logger.info(`ZIP descomprimido con ${attempt.command}`);
+          return;
+        }
+
+        errors.push(`${attempt.command}: exit ${result.status} ${result.stderr?.toString().trim() ?? ''}`);
+      } catch (error) {
+        errors.push(`${attempt.command}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    throw new Error(`No se pudo descomprimir ${path.basename(zipPath)}. Intentos: ${errors.join(' | ')}`);
   }
 
-  /**
-   * Corta un vídeo por rango de tiempo.
-   * ffmpeg -ss {start} -to {end} -i {inputPath} -c:v libx264 -pix_fmt yuv420p -an {outputPath}
-   */
-  async cut(inputPath: string, outputPath: string, start: number, end: number): Promise<void> {
-    await this.initialize();
-    await this.ensureOutputDir(outputPath);
+  /** Duración en segundos de un fichero multimedia (null si FFprobe no está disponible). */
+  async probeDuration(input: string): Promise<number | null> {
+    if (!this.ffprobePath) {
+      return null;
+    }
 
-    const args = [
-      "-ss", start.toString(),
-      "-to", end.toString(),
-      "-i", `"${inputPath}"`,
-      "-c:v", "libx264",
-      "-pix_fmt", "yuv420p",
-      "-an",
-      "-y",
-      `"${outputPath}"`
-    ];
-
-    logger.info(`FFmpeg cut: ${inputPath} [${start}s → ${end}s] → ${outputPath}`);
-    await this.runFfmpeg(args);
+    const { stdout } = await this.run(this.ffprobePath, buildProbeDurationArgs(input));
+    return parseProbeDuration(stdout);
   }
 
-  /**
-   * Mezcla audio con vídeo.
-   * ffmpeg -i {videoPath} -i {audioPath} -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -shortest {outputPath}
-   */
-  async mux(videoPath: string, audioPath: string, outputPath: string): Promise<void> {
-    await this.initialize();
-    await this.ensureOutputDir(outputPath);
+  /** Resolución, códecs y presencia de audio de un fichero. */
+  async probeStreams(input: string): Promise<VideoStreams> {
+    const streams: VideoStreams = { hasAudio: false, durationSec: null };
+    if (!this.ffprobePath) {
+      return streams;
+    }
 
-    const args = [
-      "-i", `"${videoPath}"`,
-      "-i", `"${audioPath}"`,
-      "-map", "0:v:0",
-      "-map", "1:a:0",
-      "-c:v", "copy",
-      "-c:a", "aac",
-      "-shortest",
-      "-y",
-      `"${outputPath}"`
-    ];
-
-    logger.info(`FFmpeg mux: ${videoPath} + ${audioPath} → ${outputPath}`);
-    await this.runFfmpeg(args);
-  }
-
-  /**
-   * Concatena múltiples clips de vídeo.
-   * ffmpeg -f concat -safe 0 -i {concatListFile} -c copy {outputPath}
-   */
-  async concat(inputPaths: string[], outputPath: string): Promise<void> {
-    await this.initialize();
-    await this.ensureOutputDir(outputPath);
-
-    // Crear archivo de lista de concatenación
-    const concatListContent = inputPaths.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join("\n");
-    const concatListPath = path.join(
-      path.dirname(outputPath),
-      `concat-${crypto.randomBytes(4).toString("hex")}.txt`
-    );
-
-    fs.writeFileSync(concatListPath, concatListContent);
+    const { stdout } = await this.run(this.ffprobePath, buildProbeStreamsArgs(input));
 
     try {
-      const args = [
-        "-f", "concat",
-        "-safe", "0",
-        "-i", `"${concatListPath}"`,
-        "-c", "copy",
-        "-y",
-        `"${outputPath}"`
-      ];
+      const parsed = JSON.parse(stdout) as {
+        streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number }>;
+      };
 
-      logger.info(`FFmpeg concat: ${inputPaths.length} clips → ${outputPath}`);
-      await this.runFfmpeg(args);
-    } finally {
-      // Limpiar archivo temporal
-      try { fs.unlinkSync(concatListPath); } catch { /* ignore */ }
-    }
-  }
-
-  /**
-   * Escala un vídeo a resolución mobile (1080x1920).
-   * ffmpeg -i {inputPath} -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=white" -c:v libx264 -pix_fmt yuv420p -c:a aac {outputPath}
-   */
-  async buildMobileVideo(inputPath: string, outputPath: string): Promise<void> {
-    await this.initialize();
-    await this.ensureOutputDir(outputPath);
-
-    const args = [
-      "-i", `"${inputPath}"`,
-      "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=white",
-      "-c:v", "libx264",
-      "-pix_fmt", "yuv420p",
-      "-c:a", "aac",
-      "-y",
-      `"${outputPath}"`
-    ];
-
-    logger.info(`FFmpeg build mobile: ${inputPath} → ${outputPath} (1080x1920)`);
-    await this.runFfmpeg(args);
-  }
-
-  /**
-   * Construye un vídeo final (desktop o mobile) a partir de clips.
-   * Wrapper de compatibilidad para mantener la API anterior.
-   */
-  async build(options: FfmpegOptions): Promise<string> {
-    const { inputFiles, outputPath, variant } = options;
-
-    if (variant === "mobile") {
-      if (inputFiles.length === 1) {
-        await this.buildMobileVideo(inputFiles[0], outputPath);
-      } else {
-        const concatPath = path.join(path.dirname(outputPath), "temp-concat.mp4");
-        await this.concat(inputFiles, concatPath);
-        await this.buildMobileVideo(concatPath, outputPath);
-        try { fs.unlinkSync(concatPath); } catch { /* ignore */ }
+      for (const stream of parsed.streams ?? []) {
+        if (stream.codec_type === 'video' && !streams.videoCodec) {
+          streams.videoCodec = stream.codec_name;
+          streams.width = stream.width;
+          streams.height = stream.height;
+        }
+        if (stream.codec_type === 'audio') {
+          streams.hasAudio = true;
+          streams.audioCodec = stream.codec_name;
+        }
       }
-    } else {
-      await this.concat(inputFiles, outputPath);
+    } catch (error) {
+      logger.warn('FFprobe devolvió una salida no interpretable:', error);
     }
 
-    return outputPath;
+    streams.durationSec = await this.probeDuration(input);
+    return streams;
   }
 
   /**
-   * Asegura que el directorio de salida existe.
+   * Normaliza la grabación de una fase al clip final: misma resolución, fps,
+   * códec y pista de audio (real o silenciosa) para que la concatenación con
+   * `-c copy` sea fiable.
    */
+  async buildPhaseClip(request: PhaseClipRequest): Promise<string> {
+    await this.ensureReady();
+
+    const videoDurationSec =
+      request.videoDurationSec ?? (await this.probeDuration(request.videoInput)) ?? 1;
+    const audioDurationSec = request.audioInput ? await this.probeDuration(request.audioInput) : null;
+
+    let padVideoBySec = request.padVideoBySec ?? 0;
+    let padAudioBySec = request.padAudioBySec ?? 0;
+
+    if (audioDurationSec !== null) {
+      const delta = audioDurationSec - videoDurationSec;
+      if (delta > 0.05) {
+        padVideoBySec = this.round(delta + 0.3);
+        logger.info(`Narración más larga que el vídeo: clonando el último fotograma ${padVideoBySec}s`);
+      } else if (delta < -0.05) {
+        padAudioBySec = this.round(Math.abs(delta));
+      }
+    }
+
+    await this.ensureOutputDir(request.output);
+
+    const args = buildPhaseClipArgs({
+      videoInput: request.videoInput,
+      audioInput: request.audioInput,
+      videoDurationSec,
+      output: request.output,
+      canvas: request.canvas,
+      videoCodec: this.videoCodec,
+      audioCodec: this.audioCodec,
+      crf: this.crf,
+      preset: this.preset,
+      padVideoBySec,
+      padAudioBySec
+    });
+
+    logger.info(`Clip de fase: ${path.basename(request.videoInput)} → ${path.basename(request.output)}`);
+    await this.runFfmpeg(args);
+    return request.output;
+  }
+
+  /** Corta un vídeo por rango temporal. */
+  async cut(input: string, output: string, startSec: number, endSec: number): Promise<string> {
+    await this.ensureReady();
+    await this.ensureOutputDir(output);
+    await this.runFfmpeg(buildCutArgs(input, output, startSec, endSec));
+    return output;
+  }
+
+  /** Mezcla audio con vídeo (sin recodificar el vídeo). */
+  async mux(videoInput: string, audioInput: string, output: string): Promise<string> {
+    await this.ensureReady();
+    await this.ensureOutputDir(output);
+    await this.runFfmpeg(buildMuxArgs(videoInput, audioInput, output, this.audioCodec));
+    return output;
+  }
+
+  /** Concatena clips homogéneos sin recodificar. */
+  async concat(inputs: string[], output: string): Promise<string> {
+    await this.ensureReady();
+
+    if (inputs.length === 0) {
+      throw new Error('No hay clips que concatenar.');
+    }
+
+    await this.ensureOutputDir(output);
+    const listPath = path.join(path.dirname(output), `concat-${crypto.randomBytes(4).toString('hex')}.txt`);
+
+    fs.writeFileSync(listPath, buildConcatList(inputs), 'utf-8');
+
+    try {
+      await this.runFfmpeg(buildConcatArgs(listPath, output));
+    } finally {
+      try {
+        fs.unlinkSync(listPath);
+      } catch {
+        /* temporal ya eliminado */
+      }
+    }
+
+    return output;
+  }
+
+  /** Concatena una lista de clips y devuelve el vídeo maestro. */
+  async buildVideo(inputs: string[], output: string): Promise<string> {
+    return this.concat(inputs, output);
+  }
+
+  /** Renderiza la variante mobile (1080x1920 por defecto). */
+  async buildMobileVideo(input: string, output: string): Promise<string> {
+    return this.buildVariant(input, output, this.mobileCanvas);
+  }
+
+  /** Renderiza la variante desktop (1920x1080 por defecto). */
+  async buildDesktopVideo(input: string, output: string): Promise<string> {
+    return this.buildVariant(input, output, this.desktopCanvas);
+  }
+
+  /** Renderiza una variante con el lienzo indicado. */
+  async buildVariant(input: string, output: string, canvas: Canvas): Promise<string> {
+    await this.ensureReady();
+    await this.ensureOutputDir(output);
+    logger.info(`Variante ${canvas.width}x${canvas.height}: ${path.basename(input)} → ${path.basename(output)}`);
+    await this.runFfmpeg(buildVariantArgs(input, output, canvas, this.videoCodec, this.audioCodec));
+    return output;
+  }
+
+  private async ensureReady(): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+  }
+
+  private round(value: number): number {
+    return Number(value.toFixed(3));
+  }
+
   private async ensureOutputDir(filePath: string): Promise<void> {
-    const dir = path.dirname(filePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  }
+
+  /** Ejecuta FFmpeg (sin shell) y propaga stderr como error legible. */
+  private runFfmpeg(args: string[]): Promise<void> {
+    logger.debug(`FFmpeg ${args.join(' ')}`);
+    return this.run(this.ffmpegPath, args).then(() => undefined);
   }
 
   /**
-   * Ejecuta un comando FFmpeg y espera a que termine.
+   * Ejecuta un binario con `shell: false`. Las rutas viajan como argumentos
+   * independientes: no se añaden comillas ni se interpreta ninguna shell.
    */
-  private runFfmpeg(args: string[]): Promise<void> {
+  private run(binary: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
-      logger.debug(`Ejecutando FFmpeg: ${this.ffmpegPath} ${args.join(" ")}`);
-
-      const proc = child_process.spawn(this.ffmpegPath, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-        shell: true
+      const child = child_process.spawn(binary, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: false
       });
 
-      let stderr = "";
-      proc.stderr?.on("data", (data) => {
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout?.on('data', data => {
+        stdout += data.toString();
+      });
+      child.stderr?.on('data', data => {
         stderr += data.toString();
       });
 
-      proc.on("close", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          const errorMsg = stderr.trim() || `FFmpeg exited with code ${code}`;
-          reject(new Error(`FFmpeg error: ${errorMsg}`));
-        }
-      });
-
-      proc.on("error", (error) => {
-        const err = error as NodeJS.ErrnoException;
-        if (err.code === "ENOENT") {
-          reject(new Error(`FFmpeg no encontrado en: ${this.ffmpegPath}`));
+      child.on('error', (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') {
+          reject(new Error(`Ejecutable no encontrado: ${binary}`));
         } else {
           reject(error);
         }
+      });
+
+      child.on('close', code => {
+        if (code === 0) {
+          resolve({ stdout, stderr });
+          return;
+        }
+
+        const detail = stderr.trim().split('\n').slice(-6).join('\n') || `exit code ${code}`;
+        reject(new Error(`${path.basename(binary)} falló: ${detail}`));
       });
     });
   }

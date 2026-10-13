@@ -19,7 +19,11 @@
   ],
   "activationEvents": [
     "onCommand:marketing-video-creator.startDemo",
-    "onCommand:marketing-videoCreator.openPanel"
+    "onCommand:marketing-video-creator.openPanel",
+    "onCommand:marketing-video-creator.cancelDemo",
+    "onCommand:marketing-video-creator.exportMobile",
+    "onCommand:marketing-video-creator.exportDesktop",
+    "onCommand:marketing-video-creator.openOutputFolder"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -35,38 +39,26 @@
         "icon": "$(output)"
       },
       {
+        "command": "marketing-video-creator.cancelDemo",
+        "title": "Marketing Video Creator: Cancelar Demo",
+        "icon": "$(stop)"
+      },
+      {
         "command": "marketing-video-creator.exportMobile",
         "title": "Marketing Video Creator: Exportar Mobile (1080x1920)",
         "icon": "$(device-mobile)"
+      },
+      {
+        "command": "marketing-video-creator.exportDesktop",
+        "title": "Marketing Video Creator: Exportar Desktop (1920x1080)",
+        "icon": "$(device-desktop)"
+      },
+      {
+        "command": "marketing-video-creator.openOutputFolder",
+        "title": "Marketing Video Creator: Abrir carpeta de salida",
+        "icon": "$(folder-opened)"
       }
     ],
-    "menus": {
-      "view/item/context": [
-        {
-          "command": "marketing-video-creator.startDemo",
-          "when": "view == marketingVideoCreatorView",
-          "group": "inline"
-        }
-      ]
-    },
-    "views": {
-      "marketingVideoCreatorView": [
-        {
-          "type": "webview",
-          "id": "marketingVideoCreatorPanel",
-          "name": "Panel de Control"
-        }
-      ]
-    },
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "marketingVideoCreatorView",
-          "title": "Marketing Video Creator",
-          "icon": "media/mvc-icon.svg"
-        }
-      ]
-    },
     "configuration": {
       "title": "Marketing Video Creator",
       "properties": {
@@ -133,6 +125,11 @@
           "description": "Ruta personalizada al navegador Chromium de Playwright. Dejar vacío para usar la ruta por defecto.",
           "default": ""
         },
+        "marketingVideoCreator.playwright.headless": {
+          "type": "boolean",
+          "description": "Grabar las fases sin interfaz gráfica (headless). Desactivar para ver la captura en directo.",
+          "default": true
+        },
         "marketingVideoCreator.playwright.viewportWidth": {
           "type": "number",
           "description": "Ancho del viewport para capturas.",
@@ -150,17 +147,17 @@
         },
         "marketingVideoCreator.ffmpeg.path": {
           "type": "string",
-          "description": "Ruta al ejecutable de FFmpeg. Dejar vacío para usar el descargado automáticamente.",
+          "description": "Ruta al ejecutable de FFmpeg. Dejar vacío para detectarlo en el PATH o descargarlo automáticamente.",
           "default": ""
         },
         "marketingVideoCreator.ffmpeg.autoDownload": {
           "type": "boolean",
-          "description": "Descargar FFmpeg automáticamente si no se encuentra.",
+          "description": "Descargar FFmpeg automáticamente si no se encuentra (solo Windows).",
           "default": true
         },
         "marketingVideoCreator.output.directory": {
           "type": "string",
-          "description": "Directorio de salida para vídeos generados.",
+          "description": "Directorio de salida para vídeos generados (relativo al workspace).",
           "default": "./output/demo-video"
         },
         "marketingVideoCreator.output.format": {
@@ -226,21 +223,24 @@
     "compile:panel": "vite build --config vite.config.ts",
     "watch": "tsc -watch -p ./tsconfig.json",
     "watch:panel": "vite build --config vite.config.ts --watch",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
+    "typecheck": "tsc -p ./tsconfig.json --noEmit",
+    "pretest": "npm run compile",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node ./scripts/e2e-linux.mjs",
+    "test:vscode": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
-    "typescript": "^5.3.3",
+    "@types/vscode": "^1.85.0",
+    "@vitejs/plugin-react": "^4.2.1",
     "@vscode/test-cli": "^0.0.6",
     "@vscode/test-electron": "^2.3.9",
+    "typescript": "^5.3.3",
     "vite": "^5.0.12",
-    "@vitejs/plugin-react": "^4.2.1",
-    "eslint": "^8.56.0"
+    "vitest": "^2.1.9"
   },
   "dependencies": {
     "@playwright/test": "^1.41.2",

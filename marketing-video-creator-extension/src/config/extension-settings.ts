@@ -19,6 +19,7 @@ export interface ExtensionSettings {
   imagesProvider: 'local' | 'unsplash' | 'pexels' | 'manual';
   playwrightAutoInstall: boolean;
   playwrightBrowserPath: string;
+  playwrightHeadless: boolean;
   playwrightViewportWidth: number;
   playwrightViewportHeight: number;
   playwrightFps: number;
@@ -52,6 +53,7 @@ export function getExtensionSettings(): ExtensionSettings {
     imagesProvider: config.get('images.provider', 'manual') as 'local' | 'unsplash' | 'pexels' | 'manual',
     playwrightAutoInstall: config.get('playwright.autoInstall', true) as boolean,
     playwrightBrowserPath: config.get('playwright.browserPath', '') as string,
+    playwrightHeadless: config.get('playwright.headless', true) as boolean,
     playwrightViewportWidth: config.get('playwright.viewportWidth', 1920) as number,
     playwrightViewportHeight: config.get('playwright.viewportHeight', 1080) as number,
     playwrightFps: config.get('playwright.fps', 30) as number,

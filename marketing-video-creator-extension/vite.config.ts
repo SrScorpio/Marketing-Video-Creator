@@ -7,12 +7,14 @@ export default defineConfig({
   build: {
     outDir: 'dist/panel',
     emptyOutDir: true,
+    // Nombre de salida estable (sin hash): extension.ts referencia
+    // dist/panel/index.js para cargar el webview.
     rollupOptions: {
       input: resolve(__dirname, 'src/panel/index.html'),
       output: {
-        entryFileNames: '[name].[hash].js',
-        chunkFileNames: '[name].[hash].js',
-        assetFileNames: '[name].[hash].[ext]'
+        entryFileNames: 'index.js',
+        chunkFileNames: 'chunk-[name].js',
+        assetFileNames: 'index.[ext]'
       }
     }
   },
