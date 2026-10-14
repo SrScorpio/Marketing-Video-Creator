@@ -32,10 +32,11 @@ export interface TtsRequest {
 
 export class TtsService {
   private initialized: boolean = false;
-  private readonly provider: TtsProvider;
-  private readonly voice: string;
-  private readonly rate: number;
-  private readonly volume: number;
+  /** Expuestos para poder verificar el cableado de los ajustes. */
+  readonly provider: TtsProvider;
+  readonly voice: string;
+  readonly rate: number;
+  readonly volume: number;
 
   constructor(options: TtsServiceOptions = {}) {
     this.provider = options.provider ?? 'sapi';

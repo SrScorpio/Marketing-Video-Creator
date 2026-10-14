@@ -72,9 +72,10 @@ export class FfmpegBuilder {
   private ffmpegPath: string = '';
   private ffprobePath: string = '';
   private initialized: boolean = false;
-  private readonly autoDownload: boolean;
-  private readonly videoCodec: string;
-  private readonly audioCodec: string;
+  /** Expuestos para poder verificar el cableado de los ajustes. */
+  readonly autoDownload: boolean;
+  readonly videoCodec: string;
+  readonly audioCodec: string;
   private readonly crf: number;
   private readonly preset: string;
   private readonly desktopCanvas: Canvas;
@@ -96,6 +97,11 @@ export class FfmpegBuilder {
 
   get executablePath(): string {
     return this.ffmpegPath;
+  }
+
+  /** Ruta configurada por el usuario (vacío = PATH o descarga). */
+  get configuredExecutablePath(): string {
+    return this.configuredPath ?? '';
   }
 
   get probePath(): string {

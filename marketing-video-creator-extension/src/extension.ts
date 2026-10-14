@@ -12,6 +12,7 @@ import {
   validateProjectConfig
 } from './config/project-config';
 import { PhaseManager } from './services/phase-manager';
+import { createPipelineServices } from './config/pipeline-services';
 import { PhaseProgress } from './types/phase';
 import { createLogger } from './utils/logger';
 
@@ -71,6 +72,7 @@ async function ensurePhaseManager(): Promise<PhaseManager> {
   }
 
   const outputDir = resolveOutputDir(workspace.uri.fsPath, config.outputDir);
+  const services = createPipelineServices(settings);
 
   phaseManager = new PhaseManager({
     outputDir,
@@ -80,8 +82,8 @@ async function ensurePhaseManager(): Promise<PhaseManager> {
     desktopCanvas: { width: settings.variantDesktopWidth, height: settings.variantDesktopHeight, fps: settings.playwrightFps },
     mobileCanvas: { width: settings.variantMobileWidth, height: settings.variantMobileHeight, fps: settings.playwrightFps },
     capture: undefined,
-    tts: undefined,
-    ffmpeg: undefined
+    tts: services.tts,
+    ffmpeg: services.ffmpeg
   });
 
   phaseManager.setPhases(

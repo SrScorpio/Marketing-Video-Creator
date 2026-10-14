@@ -10,8 +10,9 @@ mobile 9:16).
 | Comprobación | Resultado |
 |---|---|
 | `npm run compile` | ✅ limpio (tsc + vite build) |
-| `npm test` (vitest) | ✅ 46/46 tests |
+| `npm test` (vitest) | ✅ 65/65 tests |
 | `npm run test:e2e` (Linux, navegador + FFmpeg reales) | ✅ 18/18 comprobaciones |
+| `npm run test:vscode` (VS Code real) | ✅ 6/6 |
 | `demo-video-desktop.mp4` | ✅ 1920x1080, con audio |
 | `demo-video-mobile.mp4` | ✅ 1080x1920, con audio |
 
@@ -114,7 +115,7 @@ Todas las claves cuelgan de `marketingVideoCreator.*`:
 ## Tests y verificación
 
 ```bash
-npm test            # 60 tests: unitarios, contrato del manifiesto, panel (jsdom) e integración con FFmpeg real
+npm test            # 65 tests: unitarios, contrato del manifiesto, cableado de ajustes, panel (jsdom) e integración con FFmpeg real
 npm run test:e2e    # E2E en Linux: navegador real + MP4 1920x1080 y 1080x1920 verificados con ffprobe
 npm run test:vscode # Extension Host: carga la extensión en un VS Code real (Linux sin display: xvfb-run -a)
 npm run package:vsix # genera el .vsix instalable
@@ -123,10 +124,10 @@ npm run package:vsix # genera el .vsix instalable
 | Nivel | Resultado verificado |
 |---|---|
 | `npm run compile` | limpio (tsc + `vite build`) |
-| `npm test` | 60/60 en 6 ficheros |
+| `npm test` | 65/65 en 7 ficheros |
 | `npm run test:e2e` | 18/18 comprobaciones |
 | `npm run test:vscode` | 6/6 en VS Code real (1.141.1), salida 0 |
-| `npm run package:vsix` | VSIX de 6,66 MB con `dist/` y dependencias de ejecución |
+| `npm run package:vsix` | VSIX de 6,67 MB con `dist/` y dependencias de ejecución |
 
 El E2E levanta una página HTML local de prueba, graba dos fases con Playwright,
 monta el vídeo y comprueba con `ffprobe` resolución, audio y duración. Genera los

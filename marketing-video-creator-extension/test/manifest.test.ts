@@ -112,4 +112,14 @@ describe('package.json ↔ código', () => {
     expect(extensionSource).toContain('nonce-');
     expect(extensionSource).toContain('enableScripts: true');
   });
+
+  it('la extensión cablea los ajustes con los servicios del pipeline', () => {
+    // Regresión: con `tts: undefined` / `ffmpeg: undefined` los ajustes de voz y
+    // de FFmpeg se ignoraban sin que ningún test se enterara.
+    expect(extensionSource).toContain('createPipelineServices(settings)');
+    expect(extensionSource).toContain('tts: services.tts');
+    expect(extensionSource).toContain('ffmpeg: services.ffmpeg');
+    expect(extensionSource).not.toMatch(/tts:\s*undefined/);
+    expect(extensionSource).not.toMatch(/ffmpeg:\s*undefined/);
+  });
 });

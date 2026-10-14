@@ -10,61 +10,88 @@ Node 22, FFmpeg/FFprobe reales, Chromium de Playwright real y **VS Code real**
 | Nivel | Comando | Resultado |
 |---|---|---|
 | Compilación | `npm run compile` | limpio (tsc + `vite build`) |
-| Tests (unitarios + integración FFmpeg) | `npm test` | **60/60** (6 ficheros) |
+| Tests (unitarios + integración FFmpeg) | `npm test` | **65/65** (7 ficheros) |
 | E2E con navegador y FFmpeg reales | `npm run test:e2e` | **18/18** comprobaciones |
 | Extension Host en VS Code real | `npm run test:vscode` | **6/6**, `Exit code 0` |
-| Empaquetado instalable | `npm run package:vsix` | VSIX 6,66 MB, 956 ficheros |
+| Empaquetado instalable | `npm run package:vsix` | VSIX 958 files, 6.67 MB |
 
 ## Salida real
 
 ```text
 ### COMPILE
-computing gzip size...
 dist/panel/src/panel/index.html    0.30 kB │ gzip:  0.23 kB
 dist/panel/index.js              331.87 kB │ gzip: 92.17 kB
-✓ built in 20.57s
+✓ built in 19.42s
 
 ### TESTS (vitest)
- ✓ test/manifest.test.ts (8 tests) 14ms
- ✓ test/srt.test.ts (12 tests) 22ms
- ✓ test/ffmpeg-args.test.ts (17 tests) 23ms
- ✓ test/panel.test.tsx (6 tests) 411ms
- ✓ test/phase-manager.test.ts (5 tests) 10327ms
- ✓ test/ffmpeg-builder.test.ts (12 tests) 12087ms
- Test Files  6 passed (6)
-      Tests  60 passed (60)
+ ✓ test/manifest.test.ts (9 tests) 24ms
+ ✓ test/ffmpeg-args.test.ts (17 tests) 29ms
+ ✓ test/srt.test.ts (12 tests) 26ms
+ ✓ test/pipeline-services.test.ts (4 tests) 13ms
+ ✓ test/panel.test.tsx (6 tests) 384ms
+ ✓ test/phase-manager.test.ts (5 tests) 9279ms
+ ✓ test/ffmpeg-builder.test.ts (12 tests) 10477ms
+ Test Files  7 passed (7)
+      Tests  65 passed (65)
 
 ### E2E
 ✅ FFmpeg disponible en el sistema — /home/hermes/.hermes/tools/ffmpeg-9.0.1-linux-x64/bin/ffmpeg
-✅ Página de prueba creada — file:///home/hermes/.hermes/cache/scratch/mvc-e2e-MJi9Ru/app.html
+✅ Página de prueba creada — file:///home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/app.html
 ✅ [desktop] fases capturadas sin error — 01-presentacion=done, 02-resultado=done
 ✅ [desktop] clip de 01-presentacion generado
 ✅ [desktop] clip de 02-resultado generado
-✅ [desktop] subtítulos SRT generados — /home/hermes/.hermes/cache/scratch/mvc-e2e-MJi9Ru/desktop-run/srt/01-presentacion.srt
-✅ [desktop] MP4 final generado — /home/hermes/.hermes/cache/scratch/mvc-e2e-MJi9Ru/desktop-run/desktop/demo-video-desktop.mp4
+✅ [desktop] subtítulos SRT generados — /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/desktop-run/srt/01-presentacion.srt
+✅ [desktop] MP4 final generado — /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/desktop-run/desktop/demo-video-desktop.mp4
 ✅ [desktop] resolución 1920x1080 — obtenido 1920x1080
 ✅ [desktop] pista de audio presente
-✅ [desktop] duración > 0 — 5.07s
+✅ [desktop] duración > 0 — 4.90s
 ✅ [mobile] fases capturadas sin error — 01-presentacion=done, 02-resultado=done
 ✅ [mobile] clip de 01-presentacion generado
 ✅ [mobile] clip de 02-resultado generado
-✅ [mobile] subtítulos SRT generados — /home/hermes/.hermes/cache/scratch/mvc-e2e-MJi9Ru/mobile-run/srt/01-presentacion.srt
-✅ [mobile] MP4 final generado — /home/hermes/.hermes/cache/scratch/mvc-e2e-MJi9Ru/mobile-run/mobile/demo-video-mobile.mp4
+✅ [mobile] subtítulos SRT generados — /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/mobile-run/srt/01-presentacion.srt
+✅ [mobile] MP4 final generado — /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/mobile-run/mobile/demo-video-mobile.mp4
 ✅ [mobile] resolución 1080x1920 — obtenido 1080x1920
 ✅ [mobile] pista de audio presente
 ✅ [mobile] duración > 0 — 5.00s
 Artefactos E2E:
- - desktop: /home/hermes/.hermes/cache/scratch/mvc-e2e-MJi9Ru/desktop-run/desktop/demo-video-desktop.mp4
- - mobile:  /home/hermes/.hermes/cache/scratch/mvc-e2e-MJi9Ru/mobile-run/mobile/demo-video-mobile.mp4
+ - desktop: /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/desktop-run/desktop/demo-video-desktop.mp4
+ - mobile:  /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/mobile-run/mobile/demo-video-mobile.mp4
 18/18 comprobaciones OK
 E2E OK
 
 ### EXTENSION HOST (VS Code real)
+  Marketing Video Creator · Extension Host
+    ✔ la extensión está presente y se activa (927ms)
+    ✔ registra los 6 comandos declarados en el manifiesto (68ms)
+    ✔ la configuración declarada se resuelve con sus valores por defecto
+    ✔ abre el panel webview sin lanzar errores
+    ✔ los comandos sin captura previa responden sin romper (avisan y salen) (753ms)
+    ✔ el manifest del host expone el bundle compilado del panel
+  6 passing (2s)
 Exit code:   0
 
-### VSIX
+### ffprobe de los MP4
+--- /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/desktop-run/desktop/demo-video-desktop.mp4
+codec_name=h264
+width=1920
+height=1080
+codec_name=aac
+sample_rate=48000
+channels=2
+duration=4.900000
+--- /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/mobile-run/mobile/demo-video-mobile.mp4
+codec_name=h264
+width=1080
+height=1920
+codec_name=aac
+sample_rate=48000
+channels=2
+duration=5.002667
 
- DONE  Packaged: /tmp/mvc-evidence/marketing-video-creator-0.1.0.vsix (956 files, 6.66 MB)
+### VSIX
+ DONE  Packaged: /tmp/mvc-evidence/marketing-video-creator-0.1.0.vsix (958 files, 6.67 MB)
+    14192  2026-10-14 15:08   extension/dist/extension.js
+   331898  2026-10-14 15:08   extension/dist/panel/index.js
 ```
 
 ## Extension Host (VS Code real, vía xvfb)
@@ -76,11 +103,11 @@ webview y que los comandos sin captura previa avisan sin romper.
 
 ```text
 Marketing Video Creator · Extension Host
-    ✔ la extensión está presente y se activa (913ms)
-    ✔ registra los 6 comandos declarados en el manifiesto (175ms)
+    ✔ la extensión está presente y se activa (927ms)
+    ✔ registra los 6 comandos declarados en el manifiesto (68ms)
     ✔ la configuración declarada se resuelve con sus valores por defecto
     ✔ abre el panel webview sin lanzar errores
-    ✔ los comandos sin captura previa responden sin romper (avisan y salen) (754ms)
+    ✔ los comandos sin captura previa responden sin romper (avisan y salen) (753ms)
     ✔ el manifest del host expone el bundle compilado del panel
   6 passing (2s)
 Exit code:   0
@@ -89,63 +116,22 @@ Exit code:   0
 ## ffprobe de los MP4 entregados por el E2E
 
 ```text
-DIR=/home/hermes/.hermes/cache/scratch/mvc-e2e-L37wDO
-== /home/hermes/.hermes/cache/scratch/mvc-e2e-L37wDO/desktop-run/desktop/demo-video-desktop.mp4 ==
-{
-    "programs": [
-
-    ],
-    "stream_groups": [
-
-    ],
-    "streams": [
-        {
-            "codec_name": "h264",
-            "codec_type": "video",
-            "width": 1920,
-            "height": 1080
-        },
-        {
-            "codec_name": "aac",
-            "codec_type": "audio",
-            "sample_rate": "48000",
-            "channels": 2
-        }
-    ],
-    "format": {
-        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
-        "duration": "5.000000",
-        "size": "29612"
-    }
-}
-== /home/hermes/.hermes/cache/scratch/mvc-e2e-L37wDO/mobile-run/mobile/demo-video-mobile.mp4 ==
-{
-    "programs": [
-
-    ],
-    "stream_groups": [
-
-    ],
-    "streams": [
-        {
-            "codec_name": "h264",
-            "codec_type": "video",
-            "width": 1080,
-            "height": 1920
-        },
-        {
-            "codec_name": "aac",
-            "codec_type": "audio",
-            "sample_rate": "48000",
-            "channels": 2
-        }
-    ],
-    "format": {
-        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
-        "duration": "5.181333",
-        "size": "45329"
-    }
-}
+--- /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/desktop-run/desktop/demo-video-desktop.mp4
+codec_name=h264
+width=1920
+height=1080
+codec_name=aac
+sample_rate=48000
+channels=2
+duration=4.900000
+--- /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/mobile-run/mobile/demo-video-mobile.mp4
+codec_name=h264
+width=1080
+height=1920
+codec_name=aac
+sample_rate=48000
+channels=2
+duration=5.002667
 ```
 
 ## VSIX: contenido verificado
@@ -155,9 +141,8 @@ ejecución (Playwright, React, webview-ui-toolkit). Se comprueba el contenido re
 del archivo (no la salida del comando de empaquetado):
 
 ```text
-    14036  2026-10-14 09:07   extension/dist/extension.js
-   331898  2026-10-14 09:07   extension/dist/panel/index.js
- 31030765                     956 files
+14192  2026-10-14 15:08   extension/dist/extension.js
+331898  2026-10-14 15:08   extension/dist/panel/index.js
 ```
 
 ## Qué cubre cada nivel
@@ -170,9 +155,11 @@ del archivo (no la salida del comando de empaquetado):
   `package.json` está registrado en el código y en `activationEvents`; las claves
   de configuración declaradas son exactamente las que lee la extensión; las fases
   por defecto del manifiesto coinciden con `DEFAULT_PHASES`; rutas de `main` y del
-  bundle del panel coherentes con el build; el webview declara CSP y nonce. Esta
-  capa caza la clase de bug que ya apareció una vez (el id del comando del panel
-  no coincidía y el panel no abría).
+  bundle del panel coherentes con el build; el webview declara CSP y nonce; y los
+  ajustes quedan cableados con los servicios del pipeline.
+- **Cableado de ajustes** (`test/pipeline-services.test.ts`): provider, voz,
+  velocidad y volumen de la narración, y ruta/descarga/códecs de FFmpeg llegan a
+  los servicios (regresión: antes se construían con `undefined`).
 - **Panel webview** (`test/panel.test.tsx`, jsdom): el panel se renderiza, avisa al
   host con `ready`, aplica la configuración y el progreso recibidos, muestra el
   error de una fase, envía los comandos (`startCapture`, `buildVideo`,
@@ -190,6 +177,18 @@ del archivo (no la salida del comando de empaquetado):
   que el MP4 desktop es 1920x1080 y el mobile 1080x1920, ambos con audio.
 - **Extension Host** (`test/vscode/suite/`): VS Code real cargando la extensión.
 
+## Incidencias encontradas y corregidas durante la verificación
+
+- **`.vscodeignore` excluía `node_modules/`**: un VSIX instalado no habría
+  arrancado (faltaban Playwright, React y webview-ui-toolkit). Ahora el paquete
+  incluye las dependencias de ejecución y se verifica su contenido.
+- **Los ajustes de TTS y FFmpeg se ignoraban**: `extension.ts` construía el
+  pipeline con `tts: undefined` y `ffmpeg: undefined`, así que cambiar la voz, la
+  velocidad o la ruta de FFmpeg no tenía ningún efecto. Ahora se construyen desde
+  `createPipelineServices(settings)` y hay tests que lo impiden.
+- **El id del comando del panel no coincidía** con el registrado (el panel no
+  abría): lo caza `test/manifest.test.ts`.
+
 ## Límites de esta verificación (lo que NO cubre)
 
 - **Narración SAPI**: solo existe en Windows. En Linux/macOS se verifica la
@@ -200,6 +199,12 @@ del archivo (no la salida del comando de empaquetado):
 - **Flujos de usuario completos dentro de VS Code** (captura + montaje + export
   desde el panel, en Windows): el pipeline se verifica por CLI/E2E, no por
   interacción manual en la UI.
+- **Claves reservadas para Fase 2** declaradas en el manifiesto pero sin
+  implementación: `apiKey`, `nanBuilders.*`, `stt.*`, `images.*`. Además
+  `playwright.viewportWidth/Height`, `playwright.autoInstall`, `browserPath`,
+  `output.format` y `phases.enabled` están declaradas pero no se consumen (la
+  geometría de captura sale de `variants.*`): son candidatas a eliminar del
+  manifiesto.
 - **Publicación en el Marketplace**: fuera de alcance.
 - Los MP4 de la evidencia son de una app de prueba local de 2 fases; no sustituyen
   a una demo real de un producto concreto.
