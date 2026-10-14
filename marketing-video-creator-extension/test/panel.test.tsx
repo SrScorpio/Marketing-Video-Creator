@@ -288,4 +288,29 @@ describe('panel webview', () => {
     expect(postMessage.mock.calls.some(call => (call[0] as { type: string }).type === 'savePhases')).toBe(false);
     expect(container.textContent).toContain('no son JSON válido');
   });
+
+  it('gestiona los requisitos externos desde la pestaña de configuración', async () => {
+    await sendMessage({
+      type: 'requirements',
+      data: [
+        { id: 'ffmpeg', label: 'FFmpeg', severity: 'obligatorio', status: 'ok', detail: 'en el PATH: /usr/bin/ffmpeg' },
+        {
+          id: 'chromium',
+          label: 'Navegador (Playwright)',
+          severity: 'obligatorio',
+          status: 'missing',
+          detail: 'Chromium de Playwright no instalado',
+          command: 'npx playwright install chromium'
+        }
+      ]
+    });
+
+    expect(container.textContent).toContain('Navegador (Playwright)');
+    expect(container.textContent).toContain('npx playwright install chromium');
+
+    postMessage.mockClear();
+    clickByText('Comprobar requisitos');
+
+    expect(postMessage.mock.calls.some(call => (call[0] as { type: string }).type === 'checkRequirements')).toBe(true);
+  });
 });

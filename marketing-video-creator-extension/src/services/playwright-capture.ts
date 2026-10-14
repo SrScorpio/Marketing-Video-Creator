@@ -19,6 +19,11 @@ export interface CaptureOptions {
   /** Identificador de la fase que se está grabando (nombre del webm de salida). */
   phaseId?: string;
   headless?: boolean;
+  /**
+   * Navegador alternativo al Chromium de Playwright (p. ej. Chrome o Edge ya
+   * instalados). Evita tener que descargar el navegador de Playwright.
+   */
+  executablePath?: string;
   width?: number;
   height?: number;
   isMobile?: boolean;
@@ -51,6 +56,11 @@ export class PlaywrightCapture {
     return this.recording;
   }
 
+  /** Navegador propio configurado (vacío = Chromium de Playwright). */
+  get configuredExecutablePath(): string {
+    return this.defaults.executablePath ?? '';
+  }
+
   /** Arranca Chromium y empieza a grabar la fase indicada. */
   async start(options: CaptureOptions = {}): Promise<void> {
     if (this.recording) {
@@ -73,8 +83,12 @@ export class PlaywrightCapture {
     // El navegador se lanza una sola vez por ejecución: cada fase abre su
     // propio contexto (con su propia grabación) y lo cierra al terminar.
     if (!this.browser || !this.browser.isConnected()) {
-      logger.info(`Iniciando Chromium (headless=${headless}) para ${this.phaseId} (${width}x${height})`);
-      this.browser = await chromium.launch({ headless, slowMo: merged.slowMo });
+      const executablePath = merged.executablePath?.trim() || undefined;
+      logger.info(
+        `Iniciando Chromium (headless=${headless}) para ${this.phaseId} (${width}x${height})` +
+          (executablePath ? ` con navegador propio: ${executablePath}` : '')
+      );
+      this.browser = await chromium.launch({ headless, slowMo: merged.slowMo, executablePath });
     }
 
     this.context = await this.browser.newContext({

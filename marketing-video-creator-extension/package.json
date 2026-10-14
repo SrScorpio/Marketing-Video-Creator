@@ -29,7 +29,8 @@
     "onCommand:marketing-video-creator.exportMobile",
     "onCommand:marketing-video-creator.exportDesktop",
     "onCommand:marketing-video-creator.openOutputFolder",
-    "onCommand:marketing-video-creator.createPromptPack"
+    "onCommand:marketing-video-creator.createPromptPack",
+    "onCommand:marketing-video-creator.checkRequirements"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -68,6 +69,11 @@
         "command": "marketing-video-creator.createPromptPack",
         "title": "Marketing Video Creator: Crear pack de prompts (asistente/autónomo)",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "marketing-video-creator.checkRequirements",
+        "title": "Marketing Video Creator: Comprobar requisitos (FFmpeg, navegador, voz)",
+        "icon": "$(check-all)"
       }
     ],
     "configuration": {
@@ -141,32 +147,22 @@
         },
         "marketingVideoCreator.playwright.autoInstall": {
           "type": "boolean",
-          "description": "Instalar Playwright Chromium automáticamente la primera vez.",
+          "description": "Permite instalar el navegador de Playwright desde la propia extensión (aviso de requisitos). El navegador no viaja en el VSIX: sin él no se puede grabar.",
           "default": true
         },
         "marketingVideoCreator.playwright.browserPath": {
           "type": "string",
-          "description": "Ruta personalizada al navegador Chromium de Playwright. Dejar vacío para usar la ruta por defecto.",
+          "description": "Ruta a un navegador ya instalado (chrome.exe / msedge.exe). Si se rellena, se usa ese en vez del Chromium de Playwright y no hay que descargar nada.",
           "default": ""
         },
         "marketingVideoCreator.playwright.headless": {
           "type": "boolean",
-          "description": "Grabar las fases sin interfaz gráfica (headless). Desactivar para ver la captura en directo.",
+          "description": "Grabar sin interfaz gráfica.",
           "default": true
-        },
-        "marketingVideoCreator.playwright.viewportWidth": {
-          "type": "number",
-          "description": "Ancho del viewport para capturas.",
-          "default": 1920
-        },
-        "marketingVideoCreator.playwright.viewportHeight": {
-          "type": "number",
-          "description": "Alto del viewport para capturas.",
-          "default": 1080
         },
         "marketingVideoCreator.playwright.fps": {
           "type": "number",
-          "description": "FPS de la captura.",
+          "description": "FPS de captura.",
           "default": 30
         },
         "marketingVideoCreator.ffmpeg.path": {
@@ -176,23 +172,13 @@
         },
         "marketingVideoCreator.ffmpeg.autoDownload": {
           "type": "boolean",
-          "description": "Descargar FFmpeg automáticamente si no se encuentra (solo Windows).",
+          "description": "Descargar FFmpeg automáticamente si no está en el PATH (solo Windows: build essentials de gyan.dev en %APPDATA%\\MarketingVideoCreator).",
           "default": true
         },
         "marketingVideoCreator.output.directory": {
           "type": "string",
           "description": "Directorio de salida para vídeos generados (relativo al workspace).",
           "default": "./output/demo-video"
-        },
-        "marketingVideoCreator.output.format": {
-          "type": "string",
-          "enum": [
-            "mp4",
-            "webm",
-            "mov"
-          ],
-          "description": "Formato de salida por defecto.",
-          "default": "mp4"
         },
         "marketingVideoCreator.output.videoCodec": {
           "type": "string",
@@ -285,6 +271,7 @@
     "test:watch": "vitest",
     "test:e2e": "node ./scripts/e2e-linux.mjs",
     "test:vscode": "node ./scripts/vscode-test.mjs",
+    "check:requirements": "node ./scripts/check-requirements.mjs",
     "package:vsix": "vsce package"
   },
   "devDependencies": {

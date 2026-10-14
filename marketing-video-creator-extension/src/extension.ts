@@ -6,6 +6,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as child_process from 'child_process';
+import { chromium } from '@playwright/test';
 import { getExtensionSettings, ExtensionSettings } from './config/extension-settings';
 import {
   createConfigFromSettings,
@@ -17,6 +19,13 @@ import {
 import { PhaseManager } from './services/phase-manager';
 import { createPipelineServices } from './config/pipeline-services';
 import { PROMPT_ENTRY_FILE, PROMPT_PACK } from './prompts/prompt-pack';
+import {
+  RequirementCheck,
+  checkRequirements,
+  formatRequirement,
+  summarizeRequirements
+} from './services/requirements';
+import { FfmpegBuilder } from './services/ffmpeg-builder';
 import { PhaseProgress } from './types/phase';
 import { createLogger } from './utils/logger';
 
@@ -38,7 +47,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('marketing-video-creator.exportMobile', () => handleExport('mobile')),
     vscode.commands.registerCommand('marketing-video-creator.exportDesktop', () => handleExport('desktop')),
     vscode.commands.registerCommand('marketing-video-creator.openOutputFolder', () => handleOpenOutputFolder()),
-    vscode.commands.registerCommand('marketing-video-creator.createPromptPack', () => handleCreatePromptPack())
+    vscode.commands.registerCommand('marketing-video-creator.createPromptPack', () => handleCreatePromptPack()),
+    vscode.commands.registerCommand('marketing-video-creator.checkRequirements', () => handleCheckRequirements())
   );
 }
 
@@ -86,7 +96,7 @@ async function ensurePhaseManager(): Promise<PhaseManager> {
     headless: settings.playwrightHeadless,
     desktopCanvas: { width: settings.variantDesktopWidth, height: settings.variantDesktopHeight, fps: settings.playwrightFps },
     mobileCanvas: { width: settings.variantMobileWidth, height: settings.variantMobileHeight, fps: settings.playwrightFps },
-    capture: undefined,
+    capture: services.capture,
     tts: services.tts,
     ffmpeg: services.ffmpeg
   });
@@ -120,6 +130,10 @@ function resolveOutputDir(workspacePath: string, configured: string): string {
 
 async function handleStartDemo(): Promise<void> {
   try {
+    if (!(await ensureRequirements('captura'))) {
+      return;
+    }
+
     const manager = await ensurePhaseManager();
     await handleOpenPanel();
 
@@ -170,6 +184,10 @@ async function handleCancel(): Promise<void> {
 async function handleExport(variant: 'mobile' | 'desktop'): Promise<void> {
   if (!phaseManager) {
     vscode.window.showErrorMessage('Marketing Video Creator: ejecuta primero "Iniciar demo".');
+    return;
+  }
+
+  if (!(await ensureRequirements('montaje'))) {
     return;
   }
 
@@ -255,6 +273,159 @@ async function handleCreatePromptPack(): Promise<void> {
   );
 }
 
+/* ------------------------------------------------------------------------- *
+ * Requisitos externos: FFmpeg/FFprobe, navegador de Playwright y voz.
+ * Ninguno viaja en el VSIX, así que se comprueban antes de grabar para dar un
+ * mensaje accionable en lugar del error crudo del binario que falta.
+ * ------------------------------------------------------------------------- */
+
+/** Ruta donde Playwright espera su Chromium (null si no se puede determinar). */
+function detectChromiumPath(): string | null {
+  try {
+    const chromiumPath = chromium.executablePath();
+    return typeof chromiumPath === 'string' && chromiumPath.length > 0 ? chromiumPath : null;
+  } catch {
+    return null;
+  }
+}
+
+function fileExists(filePath: string): boolean {
+  try {
+    return fs.existsSync(filePath);
+  } catch {
+    return false;
+  }
+}
+
+function collectRequirementChecks(): RequirementCheck[] {
+  const settings = getExtensionSettings();
+
+  return checkRequirements({
+    platform: process.platform,
+    findInPath: FfmpegBuilder.findInPath,
+    exists: fileExists,
+    chromiumPath: detectChromiumPath(),
+    configuredFfmpegPath: settings.ffmpegPath,
+    configuredBrowserPath: settings.playwrightBrowserPath,
+    configuredTtsProvider: settings.ttsProvider,
+    ffmpegAutoDownload: settings.ffmpegAutoDownload
+  });
+}
+
+function reportRequirements(checks: RequirementCheck[]): void {
+  for (const check of checks) {
+    postToPanel({ type: 'log', data: formatRequirement(check) });
+  }
+  postToPanel({ type: 'requirements', data: checks });
+}
+
+/** Instala el Chromium de Playwright con el CLI que viaja dentro de la extensión. */
+async function installBrowser(): Promise<boolean> {
+  const cli = path.join(extensionUri?.fsPath ?? '', 'node_modules', 'playwright', 'cli.js');
+
+  if (!fileExists(cli)) {
+    void vscode.window.showErrorMessage(
+      `No se encontró el instalador de Playwright (${cli}). Reinstala la extensión o ejecuta "npx playwright install chromium".`
+    );
+    return false;
+  }
+
+  return vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'Marketing Video Creator: instalando el navegador (~130 MB, una sola vez)...',
+      cancellable: false
+    },
+    () =>
+      new Promise<boolean>(resolve => {
+        const child = child_process.spawn(process.execPath, [cli, 'install', 'chromium'], {
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+        });
+
+        child.stdout?.on('data', data => logger.info(`[playwright install] ${String(data).trim()}`));
+        child.stderr?.on('data', data => logger.warn(`[playwright install] ${String(data).trim()}`));
+        child.on('error', error => {
+          logger.error('Fallo al instalar el navegador:', error);
+          resolve(false);
+        });
+        child.on('close', code => resolve(code === 0));
+      })
+  );
+}
+
+/** Comprueba los requisitos y ofrece arreglarlos (comando propio y botón del panel). */
+async function handleCheckRequirements(): Promise<void> {
+  let checks = collectRequirementChecks();
+  reportRequirements(checks);
+
+  let summary = summarizeRequirements(checks);
+
+  if (!summary.ok) {
+    const acciones: string[] = [];
+
+    if (summary.blocking.some(check => check.id === 'chromium') && getExtensionSettings().playwrightAutoInstall) {
+      acciones.push('Instalar navegador');
+    }
+
+    acciones.push('Ver ajustes');
+
+    const elegido = await vscode.window.showErrorMessage(`Marketing Video Creator: ${summary.text}`, ...acciones);
+
+    if (elegido === 'Instalar navegador') {
+      const instalado = await installBrowser();
+      if (instalado) {
+        checks = collectRequirementChecks();
+        reportRequirements(checks);
+        summary = summarizeRequirements(checks);
+      }
+    } else if (elegido === 'Ver ajustes') {
+      void vscode.commands.executeCommand('workbench.action.openSettings', 'marketingVideoCreator');
+    }
+  }
+
+  if (summary.ok) {
+    void vscode.window.showInformationMessage(`Marketing Video Creator: ${summary.text}`);
+  }
+}
+
+/**
+ * Pre-flight: si falta un requisito obligatorio, avisa y no arranca (mejor eso
+ * que fallar con el error del binario a mitad de la grabación).
+ */
+async function ensureRequirements(etapa: 'captura' | 'montaje', intento = 0): Promise<boolean> {
+  const checks = collectRequirementChecks();
+  reportRequirements(checks);
+
+  const { blocking, text } = summarizeRequirements(checks);
+  const relevantes = etapa === 'captura' ? blocking : blocking.filter(check => check.id === 'ffmpeg');
+
+  if (relevantes.length === 0) {
+    return true;
+  }
+
+  const acciones: string[] = [];
+
+  if (relevantes.some(check => check.id === 'chromium') && getExtensionSettings().playwrightAutoInstall) {
+    acciones.push('Instalar navegador');
+  }
+
+  acciones.push('Ver ajustes');
+
+  const elegido = await vscode.window.showErrorMessage(`Marketing Video Creator: no se puede ${etapa === 'captura' ? 'grabar' : 'montar'}. ${text}`, ...acciones);
+
+  if (elegido === 'Ver ajustes') {
+    void vscode.commands.executeCommand('workbench.action.openSettings', 'marketingVideoCreator');
+    return false;
+  }
+
+  if (elegido === 'Instalar navegador' && intento < 1) {
+    const instalado = await installBrowser();
+    return instalado ? ensureRequirements(etapa, intento + 1) : false;
+  }
+
+  return false;
+}
+
 async function handleOpenPanel(): Promise<void> {
   if (currentPanel) {
     currentPanel.reveal(vscode.ViewColumn.One);
@@ -317,6 +488,11 @@ async function handleWebviewMessage(message: { type: string; data?: unknown }): 
         }
 
         postToPanel({ type: 'log', data: 'Configuración guardada.' });
+        break;
+      }
+
+      case 'checkRequirements': {
+        await handleCheckRequirements();
         break;
       }
 

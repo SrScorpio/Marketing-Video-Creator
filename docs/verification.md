@@ -330,3 +330,81 @@ real (Windows), comprobación visual del panel y recorrido manual completo dentr
 de VS Code. El descubrimiento automático de pantallas de una app nueva (crawler)
 todavía no existe: hoy lo cubre el prompt 01 con el agente de chat.
 
+
+## Quinta pasada · requisitos satélite (FFmpeg, navegador, voz)
+
+Pregunta que la origina: *«¿para crear los vídeos necesita requerimientos? ¿cómo
+los crea, FFmpeg o Python?»*. Se auditaron los procesos externos reales y se
+añadió comprobación previa con mensaje accionable.
+
+### Qué lanza realmente la extensión
+
+```
+src/utils/srt.ts            (regex, no proceso)
+src/extension.ts:341        node  <node_modules/playwright/cli.js> install chromium
+src/services/ffmpeg-builder.ts:308  spawnSync(tar|unzip|bsdtar|powershell Expand-Archive)   [solo al descomprimir el ZIP de FFmpeg]
+src/services/ffmpeg-builder.ts:514  spawn(<ffmpeg>)  ← todo el montaje del vídeo
+src/services/sapi-provider.ts:146   execFile(powershell, System.Speech)  [voz, solo Windows]
+```
+
+`grep -rni python src/ package.json` → **sin coincidencias**: el pipeline es
+TypeScript + FFmpeg. La descarga automática de FFmpeg existe **solo en Windows**
+(`ffmpeg-builder.ts:135`, `if (process.platform !== 'win32') throw`), así que en
+Linux/macOS `ffmpeg` tiene que estar en el PATH o en `ffmpeg.path`.
+
+### Chequeo añadido (`src/services/requirements.ts`)
+
+Cuatro comprobaciones (FFmpeg y navegador obligatorios; FFprobe y voz degradan),
+cada una con `fix`/`command`. Pre-flight en `handleStartDemo` (captura) y
+`handleExport` (montaje), comando `marketing-video-creator.checkRequirements` y
+botón en el panel. Script homónimo que usa el **mismo código compilado**:
+
+```
+$ npm run check:requirements
+Requisitos en linux (node v22.23.2):
+
+✅ FFmpeg: en el PATH: /home/hermes/.hermes/tools/ffmpeg-9.0.1-linux-x64/bin/ffmpeg
+✅ FFprobe: disponible: /home/hermes/.hermes/tools/ffmpeg-9.0.1-linux-x64/bin/ffprobe
+✅ Navegador (Playwright): Chromium de Playwright instalado: /home/hermes/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome
+⚠️ Narración (TTS): SAPI solo existe en Windows: en este sistema el vídeo se genera sin voz
+
+✅ Requisitos suficientes; funcionará degradado: Narración (TTS).
+```
+
+### La detección de verdad detecta (no es un check decorativo)
+
+Máquina sin navegador (misma máquina, `PLAYWRIGHT_BROWSERS_PATH` a un directorio
+vacío):
+
+```
+$ PLAYWRIGHT_BROWSERS_PATH=/tmp/mvc-no-browser npm run check:requirements
+❌ Navegador (Playwright): Chromium de Playwright no instalado (la grabación no puede arrancar) ... → npx playwright install chromium
+❌ Faltan requisitos para generar el vídeo: Navegador (Playwright): npx playwright install chromium
+exit=1
+```
+
+Test unitario que fija la premisa (por eso el chequeo existe): con el Chromium
+inalcanzable, `chromium.launch()` revienta con *«Executable doesn't exist…»*.
+
+### La autoinstalación del navegador funciona (mismo CLI que lanza la extensión)
+
+```
+$ PLAYWRIGHT_BROWSERS_PATH=/tmp/mvc-pw-install ELECTRON_RUN_AS_NODE=1 node ./node_modules/playwright/cli.js install chromium
+$ du -sh /tmp/mvc-pw-install      →  658M   (chromium-1243 + chromium_headless_shell-1243 + ffmpeg-1011)
+$ chrome --version                →  Google Chrome for Testing 153.0.8010.12
+$ PLAYWRIGHT_BROWSERS_PATH=/tmp/mvc-pw-install npm run check:requirements
+✅ Navegador (Playwright): Chromium de Playwright instalado: /tmp/mvc-pw-install/chromium-1243/chrome-linux64/chrome
+exit=0
+```
+
+El VSIX lleva dentro lo necesario para esa autoinstalación
+(`node_modules/playwright/cli.js`, 964 ficheros): no hace falta que el usuario
+tenga npm ni Playwright instalados.
+
+### Claves de configuración sin implementación detrás: eliminadas
+
+`playwright.viewportWidth`, `playwright.viewportHeight` (duplicaban `variants.*`,
+que es lo que el pipeline usa de verdad) y `output.format` (el formato siempre ha
+sido MP4). Con test de contrato que impide reintroducirlas. Quedan 25 claves, y
+las que se prometen ahora se aplican: `playwright.autoInstall`, `browserPath`,
+`ffmpeg.autoDownload`.

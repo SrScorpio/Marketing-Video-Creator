@@ -21,7 +21,8 @@ const COMMANDS = [
   'marketing-video-creator.exportMobile',
   'marketing-video-creator.exportDesktop',
   'marketing-video-creator.openOutputFolder',
-  'marketing-video-creator.createPromptPack'
+  'marketing-video-creator.createPromptPack',
+  'marketing-video-creator.checkRequirements'
 ];
 
 function getExtension() {
@@ -38,7 +39,7 @@ suite('Marketing Video Creator · Extension Host', () => {
     assert.strictEqual(extension.isActive, true, 'la extensión no quedó activa');
   });
 
-  test('registra los 7 comandos declarados en el manifiesto', async () => {
+  test('registra los 8 comandos declarados en el manifiesto', async () => {
     await getExtension().activate();
 
     const registered = await vscode.commands.getCommands(true);
@@ -57,6 +58,11 @@ suite('Marketing Video Creator · Extension Host', () => {
 
     const esperados = ['00-leeme.md', '01-descubrimiento.md', '02-guion.md', '03-pasos-captura.md', '04-ensamblar-config.md'];
     const ruta = nombre => path.join(folder.uri.fsPath, '.mvc', 'prompts', nombre);
+
+    // Estado limpio: la última parte del test edita 02-guion.md a propósito y ya
+    // no se sobreescribe, así que sin borrar antes, la segunda ejecución del test
+    // encontraría ese fichero pequeño y fallaría por culpa, no por el producto.
+    fs.rmSync(path.join(folder.uri.fsPath, '.mvc'), { recursive: true, force: true });
 
     await vscode.commands.executeCommand('marketing-video-creator.createPromptPack');
     await new Promise(resolve => setTimeout(resolve, 750));

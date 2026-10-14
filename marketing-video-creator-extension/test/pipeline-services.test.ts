@@ -20,6 +20,8 @@ function settings(overrides: Partial<PipelineServiceSettings> = {}): PipelineSer
     ffmpegAutoDownload: true,
     outputVideoCodec: 'libx264',
     outputAudioCodec: 'aac',
+    playwrightHeadless: true,
+    playwrightBrowserPath: '',
     ...overrides
   };
 }
@@ -66,5 +68,27 @@ describe('createPipelineServices', () => {
     expect(ffmpeg.configuredExecutablePath).toBe('');
     expect(ffmpeg.autoDownload).toBe(true);
     expect(ffmpeg.videoCodec).toBe('libx264');
+  });
+
+  it('pasa a la captura el navegador propio configurado (evita descargar Chromium)', () => {
+    const { capture } = createPipelineServices(
+      settings({ playwrightBrowserPath: 'C:\\Program Files\\Google\\Chrome\\chrome.exe', playwrightHeadless: false })
+    );
+
+    expect(capture.configuredExecutablePath).toBe('C:\\Program Files\\Google\\Chrome\\chrome.exe');
+  });
+
+  it('sin navegador configurado, la captura usa el Chromium de Playwright', () => {
+    const { capture } = createPipelineServices(settings({ playwrightBrowserPath: '' }));
+
+    expect(capture.configuredExecutablePath).toBe('');
+  });
+
+  it('no inyecta ningún servicio sin construir (captura, voz y FFmpeg reales)', () => {
+    const services = createPipelineServices(settings());
+
+    expect(services.tts).toBeDefined();
+    expect(services.ffmpeg).toBeDefined();
+    expect(services.capture).toBeDefined();
   });
 });

@@ -72,6 +72,16 @@ const vscode: VsCodeApi =
     ? acquireVsCodeApi()
     : { postMessage: () => undefined, getState: () => undefined, setState: () => undefined };
 
+export interface RequirementShape {
+  id: string;
+  label: string;
+  severity: 'obligatorio' | 'opcional';
+  status: 'ok' | 'missing' | 'degraded';
+  detail: string;
+  fix?: string;
+  command?: string;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState(0);
   const [url, setUrl] = useState('');
@@ -84,6 +94,7 @@ export default function App() {
   const [logs, setLogs] = useState<string[]>([]);
   const [progress, setProgress] = useState<PhaseProgressShape>({ status: 'idle', progress: 0, phases: [] });
   const [videoPath, setVideoPath] = useState<string>('');
+  const [requirements, setRequirements] = useState<RequirementShape[] | null>(null);
 
   const appendLog = useCallback((message: string) => {
     setLogs(previous => [...previous.slice(-199), message]);
@@ -94,6 +105,10 @@ export default function App() {
       const message = event.data as { type: string; data: any };
 
       switch (message.type) {
+        case 'requirements':
+          setRequirements(Array.isArray(message.data) ? (message.data as RequirementShape[]) : null);
+          break;
+
         case 'settings':
           setApiKey(message.data.settings?.apiKey ?? '');
           setTtsProvider(message.data.settings?.ttsProvider ?? 'sapi');
@@ -216,6 +231,39 @@ export default function App() {
 
       {activeTab === 0 && (
         <div>
+          <div
+            style={{
+              border: '1px solid var(--vscode-panel-border)',
+              borderRadius: '4px',
+              padding: '8px',
+              marginBottom: '16px'
+            }}
+          >
+            <strong>Requisitos del sistema</strong>
+            <p style={{ marginTop: '4px', marginBottom: '8px' }}>
+              FFmpeg/FFprobe y el navegador de Playwright no viajan dentro de la extensión: se comprueban antes de
+              grabar. La narración necesita Windows (SAPI del sistema).
+            </p>
+            <Button appearance="secondary" onClick={() => send('checkRequirements')}>
+              Comprobar requisitos
+            </Button>
+            {requirements && (
+              <ul style={{ marginTop: '8px', marginBottom: 0, paddingLeft: '18px' }}>
+                {requirements.map(check => (
+                  <li key={check.id} style={{ marginBottom: '4px' }}>
+                    {check.status === 'ok' ? '✅' : check.status === 'degraded' ? '⚠️' : '❌'}{' '}
+                    <strong>{check.label}</strong>: {check.detail}
+                    {check.command ? (
+                      <>
+                        {' · '}
+                        <code>{check.command}</code>
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <TextField
             label="URL de la app a demostrar"
             value={url}

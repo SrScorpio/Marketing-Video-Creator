@@ -10,9 +10,10 @@ mobile 9:16).
 | Comprobación | Resultado |
 |---|---|
 | `npm run compile` | ✅ limpio (tsc + vite build) |
-| `npm test` (vitest) | ✅ 65/65 tests |
+| `npm test` (vitest) | ✅ 118/118 tests (10 ficheros) |
+| `npm run check:requirements` | ✅ verde en Linux (FFmpeg/FFprobe/navegador) y ❌ correctamente si falta el navegador |
 | `npm run test:e2e` (Linux, navegador + FFmpeg reales) | ✅ 18/18 comprobaciones |
-| `npm run test:vscode` (VS Code real) | ✅ 6/6 |
+| `npm run test:vscode` (VS Code real) | ✅ 7/7 |
 | `demo-video-desktop.mp4` | ✅ 1920x1080, con audio |
 | `demo-video-mobile.mp4` | ✅ 1080x1920, con audio |
 
@@ -20,15 +21,35 @@ Los tests de integración y el E2E ejecutan **FFmpeg y Chromium reales** y
 verifican la resolución, la duración y la pista de audio de los MP4 generados con
 `ffprobe`.
 
-## Requisitos
+## Requisitos (satélites del pipeline)
 
-- Node.js 18+ y npm
-- FFmpeg y FFprobe en el `PATH` (en Windows la extensión puede descargarlo
-  automáticamente con `marketingVideoCreator.ffmpeg.autoDownload`)
-- Chromium de Playwright: `npx playwright install chromium`
-- Narración TTS: SAPI de Windows (`System.Speech.Synthesis`, voz *Microsoft
-  Pablo*). **En Linux/macOS el pipeline funciona sin voz** (degradación
-  controlada, ver más abajo)
+La extensión **no es autónoma**: necesita binarios y servicios que no viajan en
+el VSIX. Se comprueban antes de grabar (comando *Comprobar requisitos* o botón en
+la pestaña Configuración), así que un requisito que falta da un mensaje
+accionable, no un error crudo a mitad de faena.
+
+| Satélite | ¿Obligatorio? | Cómo se resuelve | Detalle |
+|---|---|---|---|
+| **FFmpeg** | Sí (sin él no hay MP4) | `PATH` → `ffmpeg.path` → descarga automática | La descarga sola (`ffmpeg.autoDownload`) existe **solo en Windows** (`gyan.dev`, ~80 MB, en `%APPDATA%\MarketingVideoCreator`). En Linux/macOS: `apt install ffmpeg` / `brew install ffmpeg` |
+| **FFprobe** | No (degrada) | Se busca junto a FFmpeg | Sin él la duración de los clips se estima desde la configuración en vez de medirse |
+| **Navegador (Chromium de Playwright)** | Sí (sin él no hay captura) | Chromium descargado → navegador propio (`playwright.browserPath`, p. ej. `chrome.exe`) → **instalación desde la propia extensión** | El navegador no viaja en el VSIX. La instalación usa el CLI que sí viaja dentro (`node_modules/playwright/cli.js`), sin pedirte npm |
+| **PowerShell + `System.Speech` (SAPI)** | No (degrada: vídeo sin voz) | Voz del sistema operativo | Solo Windows; no usa API key ni conexión. En Linux/macOS el vídeo se genera con pista de audio silenciosa y los SRT igualmente |
+| `tar` / `unzip` / `bsdtar` | No | Solo si hay que descomprimir el ZIP de FFmpeg | En Windows se usa `Expand-Archive` de PowerShell; en Linux nunca se llega a usar (no hay descarga) |
+| **Node.js 18+** | Sí | Es el runtime del Extension Host | `engines.vscode: ^1.90.0` |
+| **Python** | ❌ **No se usa** | — | No hay ni una invocación a Python en `src/` ni en `package.json` |
+
+Todo el vídeo se produce con **FFmpeg** (argumentos construidos en
+`src/utils/ffmpeg-args.ts`, siempre con `shell: false` y args en array): la voz
+SAPI se sintetiza a WAV, la duración se mide con `ffprobe`, los SRT se generan en
+TypeScript (`src/utils/srt.ts`) y el montaje es un `concat`/`filter_complex` de
+FFmpeg. Los únicos procesos externos que lanza la extensión son `ffmpeg`,
+`ffprobe`, `node` (instalador de Playwright) y `powershell` (SAPI).
+
+Comprobación desde terminal, con el mismo código que usa la extensión:
+
+```bash
+npm run check:requirements
+```
 
 ## Instalación
 
@@ -172,7 +193,8 @@ Todas las claves cuelgan de `marketingVideoCreator.*`:
 ## Tests y verificación
 
 ```bash
-npm test            # 93 tests: unitarios, contrato del manifiesto, esquema de config, cableado de ajustes, pack de prompts, panel (jsdom) e integración con FFmpeg real
+npm test            # 118 tests: unitarios, contrato del manifiesto, esquema de config, cableado de ajustes, pack de prompts, requisitos externos, panel (jsdom) e integración con FFmpeg real
+npm run check:requirements # estado de FFmpeg/navegador/voz en esta máquina (mismo código que la extensión)
 npm run test:e2e    # E2E en Linux: navegador real + MP4 1920x1080 y 1080x1920 verificados con ffprobe
 npm run test:vscode # Extension Host: carga la extensión en un VS Code real (Linux sin display: xvfb-run -a)
 npm run package:vsix # genera el .vsix instalable
@@ -181,10 +203,11 @@ npm run package:vsix # genera el .vsix instalable
 | Nivel | Resultado verificado |
 |---|---|
 | `npm run compile` | limpio (tsc + `vite build`) |
-| `npm test` | 93/93 en 9 ficheros |
+| `npm test` | 118/118 en 10 ficheros |
+| `npm run check:requirements` | verde en Linux; ❌ correcto cuando el navegador no está (probado con `PLAYWRIGHT_BROWSERS_PATH` vacío) |
 | `npm run test:e2e` | 18/18 comprobaciones |
-| `npm run test:vscode` | 7/7 en VS Code real (1.141.1), salida 0 — incluye la creación del pack de prompts en disco |
-| `npm run package:vsix` | VSIX de 6,68 MB (962 ficheros) con `dist/` y dependencias de ejecución |
+| `npm run test:vscode` | 7/7 en VS Code real (1.141.1), salida 0 — incluye la creación del pack de prompts en disco y la comprobación de los 8 comandos registrados |
+| `npm run package:vsix` | VSIX de 6,68 MB (964 ficheros) con `dist/` y dependencias de ejecución (`node_modules/playwright/cli.js` incluido, para poder instalar el navegador sin npm) |
 
 El E2E levanta una página HTML local de prueba, graba dos fases con Playwright,
 monta el vídeo y comprueba con `ffprobe` resolución, audio y duración. Genera los
@@ -225,7 +248,13 @@ test/                     # Vitest: unitarios + contrato del manifiesto + panel 
 test/vscode/              # Extension Host: la extensión dentro de un VS Code real
 scripts/e2e-linux.mjs     # E2E con navegador y FFmpeg reales
 scripts/vscode-test.mjs   # Lanzador de los tests del Extension Host
+scripts/check-requirements.mjs # Estado de los requisitos externos sin abrir VS Code
 ```
+
+`src/services/requirements.ts` es la pieza que responde a «¿qué necesita esto
+aparte de la extensión?»: comprueba FFmpeg, FFprobe, el navegador y el motor de
+voz, y devuelve por cada uno si está, si falta y **cómo resolverlo** (comando o
+ajuste concreto).
 
 ## Licencia
 

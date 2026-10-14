@@ -11,6 +11,7 @@
 import type { ExtensionSettings } from './extension-settings';
 import { FfmpegBuilder } from '../services/ffmpeg-builder';
 import { TtsService } from '../services/tts-service';
+import { PlaywrightCapture } from '../services/playwright-capture';
 
 /** Subconjunto de ajustes que consumen los servicios del pipeline. */
 export type PipelineServiceSettings = Pick<
@@ -23,11 +24,14 @@ export type PipelineServiceSettings = Pick<
   | 'ffmpegAutoDownload'
   | 'outputVideoCodec'
   | 'outputAudioCodec'
+  | 'playwrightHeadless'
+  | 'playwrightBrowserPath'
 >;
 
 export interface PipelineServices {
   tts: TtsService;
   ffmpeg: FfmpegBuilder;
+  capture: PlaywrightCapture;
 }
 
 export function createPipelineServices(settings: PipelineServiceSettings): PipelineServices {
@@ -43,6 +47,13 @@ export function createPipelineServices(settings: PipelineServiceSettings): Pipel
       autoDownload: settings.ffmpegAutoDownload,
       videoCodec: settings.outputVideoCodec,
       audioCodec: settings.outputAudioCodec
+    }),
+    // El navegador propio (Chrome/Edge ya instalados) evita descargar el
+    // Chromium de Playwright: es el único ajuste que decide si hay que
+    // instalar nada.
+    capture: new PlaywrightCapture({
+      headless: settings.playwrightHeadless,
+      executablePath: settings.playwrightBrowserPath || undefined
     })
   };
 }

@@ -131,4 +131,28 @@ describe('package.json ↔ código', () => {
     expect(extensionSource).toMatch(/case 'savePhases'/);
     expect(extensionSource).toContain('normalizePhases(message.data)');
   });
+
+  it('los requisitos externos se comprueban antes de grabar y de montar', () => {
+    expect(extensionSource).not.toMatch(/capture:\s*undefined/);
+    expect(extensionSource).toMatch(/capture:\s*services\.capture/);
+    expect(extensionSource).toMatch(/ensureRequirements\('captura'\)/);
+    expect(extensionSource).toMatch(/ensureRequirements\('montaje'\)/);
+    expect(extensionSource).toMatch(/case 'checkRequirements'/);
+    expect(extensionSource).toContain("'marketing-video-creator.checkRequirements'");
+    // El instalador usa el CLI que viaja en la extensión (no pide npm al usuario).
+    expect(extensionSource).toMatch(/playwright', 'cli\.js'/);
+  });
+
+  it('no quedan claves declaradas sin implementación detrás', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8')) as {
+      contributes: { configuration: { properties: Record<string, unknown> } };
+    };
+    const declared = Object.keys(manifest.contributes.configuration.properties);
+
+    // Duplicaban `variants.*` o no significaban nada: prometían algo que la
+    // extensión no hacía.
+    expect(declared).not.toContain('marketingVideoCreator.playwright.viewportWidth');
+    expect(declared).not.toContain('marketingVideoCreator.playwright.viewportHeight');
+    expect(declared).not.toContain('marketingVideoCreator.output.format');
+  });
 });

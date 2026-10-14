@@ -20,13 +20,10 @@ export interface ExtensionSettings {
   playwrightAutoInstall: boolean;
   playwrightBrowserPath: string;
   playwrightHeadless: boolean;
-  playwrightViewportWidth: number;
-  playwrightViewportHeight: number;
   playwrightFps: number;
   ffmpegPath: string;
   ffmpegAutoDownload: boolean;
   outputDirectory: string;
-  outputFormat: 'mp4' | 'webm' | 'mov';
   outputVideoCodec: string;
   outputAudioCodec: string;
   variantDesktopWidth: number;
@@ -54,13 +51,10 @@ export function getExtensionSettings(): ExtensionSettings {
     playwrightAutoInstall: config.get('playwright.autoInstall', true) as boolean,
     playwrightBrowserPath: config.get('playwright.browserPath', '') as string,
     playwrightHeadless: config.get('playwright.headless', true) as boolean,
-    playwrightViewportWidth: config.get('playwright.viewportWidth', 1920) as number,
-    playwrightViewportHeight: config.get('playwright.viewportHeight', 1080) as number,
     playwrightFps: config.get('playwright.fps', 30) as number,
     ffmpegPath: config.get('ffmpeg.path', '') as string,
     ffmpegAutoDownload: config.get('ffmpeg.autoDownload', true) as boolean,
     outputDirectory: config.get('output.directory', './output/demo-video') as string,
-    outputFormat: config.get('output.format', 'mp4') as 'mp4' | 'webm' | 'mov',
     outputVideoCodec: config.get('output.videoCodec', 'libx264') as string,
     outputAudioCodec: config.get('output.audioCodec', 'aac') as string,
     variantDesktopWidth: config.get('variants.desktop.width', 1920) as number,
