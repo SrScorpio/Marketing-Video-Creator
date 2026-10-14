@@ -176,19 +176,35 @@ Todas las claves cuelgan de `marketingVideoCreator.*`:
 
 | Clave | Descripción | Defecto |
 |---|---|---|
-| `apiKey` | API key de Nan.Builders (Fase 2). Se guarda siempre en ajustes **de usuario**, nunca en el workspace | `""` |
-| `tts.provider` | `sapi` (implementado), `edge-tts`, `external` (pendientes) | `sapi` |
-| `tts.voice` | Voz TTS | `Microsoft Pablo` |
-| `tts.rate`, `tts.volume` | Velocidad y volumen | `1.0` / `1.0` |
+| **Grabación (Playwright)** | | |
 | `playwright.headless` | Grabar sin interfaz | `true` |
-| `playwright.viewportWidth/Height` | Viewport de la variante desktop | `1920x1080` |
 | `playwright.fps` | FPS de captura | `30` |
-| `ffmpeg.path` | Ruta a FFmpeg (vacío = PATH o descarga) | `""` |
-| `ffmpeg.autoDownload` | Descarga automática en Windows | `true` |
+| `playwright.browserPath` | Navegador propio (`chrome.exe`/`msedge.exe`): si se rellena no se descarga el Chromium de Playwright | `""` |
+| `playwright.autoInstall` | Permite instalar el navegador desde la propia extensión (aviso de requisitos) | `true` |
+| **Narración (TTS)** | | |
+| `tts.provider` | `sapi` (implementado); `edge-tts` y `external` reservados | `sapi` |
+| `tts.voice` | Voz TTS | `Microsoft Pablo` |
+| `tts.rate`, `tts.volume` | Velocidad y volumen | `1` / `1` |
+| **FFmpeg** | | |
+| `ffmpeg.path` | Ruta a FFmpeg (vacío = PATH o descarga automática) | `""` |
+| `ffmpeg.autoDownload` | Descarga automática de FFmpeg (solo Windows) | `true` |
+| **Salida** | | |
 | `output.directory` | Directorio de salida | `./output/demo-video` |
+| `output.videoCodec`, `output.audioCodec` | Códecs del MP4 | `libx264` / `aac` |
 | `variants.mobile.width/height` | Variante mobile | `1080x1920` |
 | `variants.desktop.width/height` | Variante desktop | `1920x1080` |
-| `phases.list` | Fases del vídeo | 7 fases por defecto |
+| **Fases** | | |
+| `phases.enabled` | Ejecutar las fases del pipeline | `true` |
+| `phases.list` | Fases (`id`, `label`, `duration`, `url`, `script`, `steps`) | 7 fases por defecto |
+| **Reservadas (Fase 2, hoy sin efecto)** | | |
+| `apiKey` | API key de Nan.Builders; se guarda siempre en ajustes de **usuario**, nunca en el workspace | `""` |
+| `nanBuilders.enabled`, `nanBuilders.apiUrl` | Kokoro (TTS en la nube) | `false` / `https://api.nan.builders/v1` |
+| `stt.enabled`, `stt.engine` | Whisper (STT / SRT automático) | `false` / `sapi` |
+| `images.provider` | Generación de imágenes | `manual` |
+
+Son las **25 claves declaradas y no puede faltar ni sobrar ninguna**: un test de
+contrato (`test/manifest.test.ts`) compara `contributes.configuration` con lo que
+lee `extension-settings.ts` a mano y retira las claves que nadie consume.
 
 ## Tests y verificación
 

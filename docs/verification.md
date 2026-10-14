@@ -10,13 +10,17 @@ Node 22, FFmpeg/FFprobe reales, Chromium de Playwright real y **VS Code real**
 | Nivel | Comando | Resultado |
 |---|---|---|
 | Compilación | `npm run compile` | limpio (tsc + `vite build`) |
-| Tests (unitarios + integración FFmpeg) | `npm test` | **93/93** (9 ficheros) |
+| Tests (unitarios + integración FFmpeg + contrato del manifiesto + panel) | `npm test` | **118/118** (10 ficheros) |
+| Requisitos externos (FFmpeg, navegador, voz) | `npm run check:requirements` | `exit 0` en esta máquina; `exit 1` cuando falta el navegador, con el comando a ejecutar |
 | E2E con navegador y FFmpeg reales | `npm run test:e2e` | **18/18** comprobaciones |
 | Extension Host en VS Code real | `npm run test:vscode` | **7/7**, `Exit code 0` |
-| Empaquetado instalable | `npm run package:vsix` | VSIX 962 files, 6.68 MB |
+| Empaquetado instalable | `npm run package:vsix` | VSIX 964 files, 6.68 MB |
 
-La última pasada (capa de autoría: guion, pasos de captura y pack de prompts) está
-al final del documento, en **Cuarta pasada**.
+Cada pasada de la entrega se documenta al final, en orden cronológico:
+*Primera* (pipeline), *Segunda* (capas de verificación + VSIX), *Tercera*
+(ajustes cableados), *Cuarta* (capa de autoría: guion, pasos y pack de
+prompts) y **Quinta** (requisitos satélite). El resumen de arriba es siempre el
+estado final.
 
 ## Salida real
 
