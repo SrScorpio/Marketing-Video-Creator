@@ -4,15 +4,19 @@
  */
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { getExtensionSettings, ExtensionSettings } from './config/extension-settings';
 import {
   createConfigFromSettings,
   loadProjectConfig,
+  normalizePhases,
   saveProjectConfig,
   validateProjectConfig
 } from './config/project-config';
 import { PhaseManager } from './services/phase-manager';
 import { createPipelineServices } from './config/pipeline-services';
+import { PROMPT_ENTRY_FILE, PROMPT_PACK } from './prompts/prompt-pack';
 import { PhaseProgress } from './types/phase';
 import { createLogger } from './utils/logger';
 
@@ -33,7 +37,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('marketing-video-creator.cancelDemo', () => handleCancel()),
     vscode.commands.registerCommand('marketing-video-creator.exportMobile', () => handleExport('mobile')),
     vscode.commands.registerCommand('marketing-video-creator.exportDesktop', () => handleExport('desktop')),
-    vscode.commands.registerCommand('marketing-video-creator.openOutputFolder', () => handleOpenOutputFolder())
+    vscode.commands.registerCommand('marketing-video-creator.openOutputFolder', () => handleOpenOutputFolder()),
+    vscode.commands.registerCommand('marketing-video-creator.createPromptPack', () => handleCreatePromptPack())
   );
 }
 
@@ -91,7 +96,9 @@ async function ensurePhaseManager(): Promise<PhaseManager> {
       id: phase.id,
       label: phase.label,
       duration: phase.duration,
-      script: ''
+      url: phase.url,
+      script: phase.script ?? '',
+      steps: phase.steps
     }))
   );
 
@@ -205,6 +212,49 @@ async function handleOpenOutputFolder(): Promise<void> {
   );
 }
 
+/**
+ * Escribe el pack de prompts en el workspace (`.mvc/prompts/`) y abre el índice.
+ * No sobreescribe nada existente: si el usuario ya editó un prompt, se respeta.
+ */
+async function handleCreatePromptPack(): Promise<void> {
+  const workspace = vscode.workspace.workspaceFolders?.[0];
+
+  if (!workspace) {
+    void vscode.window.showErrorMessage('Abre una carpeta de workspace para crear el pack de prompts.');
+    return;
+  }
+
+  const creados: string[] = [];
+  const existentes: string[] = [];
+
+  for (const file of PROMPT_PACK) {
+    const target = path.join(workspace.uri.fsPath, file.path);
+
+    if (fs.existsSync(target)) {
+      existentes.push(file.path);
+      continue;
+    }
+
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, file.content, 'utf-8');
+    creados.push(file.path);
+  }
+
+  if (creados.length > 0) {
+    const entry = vscode.Uri.file(path.join(workspace.uri.fsPath, PROMPT_ENTRY_FILE));
+    const document = await vscode.workspace.openTextDocument(entry);
+    await vscode.window.showTextDocument(document, { preview: false });
+  }
+
+  const resumen = `Pack de prompts: ${creados.length} creado(s)${existentes.length > 0 ? `, ${existentes.length} ya existían (sin tocar)` : ''}.`;
+  logger.info(resumen);
+  postToPanel({ type: 'log', data: resumen });
+
+  void vscode.window.showInformationMessage(
+    `${resumen} Adjúntalos al chat con #file:${PROMPT_ENTRY_FILE} y pide modo wizard o autónomo.`
+  );
+}
+
 async function handleOpenPanel(): Promise<void> {
   if (currentPanel) {
     currentPanel.reveal(vscode.ViewColumn.One);
@@ -267,6 +317,50 @@ async function handleWebviewMessage(message: { type: string; data?: unknown }): 
         }
 
         postToPanel({ type: 'log', data: 'Configuración guardada.' });
+        break;
+      }
+
+      case 'savePhases': {
+        const workspace = vscode.workspace.workspaceFolders?.[0];
+        const existing = workspace ? loadProjectConfig(workspace) : null;
+
+        if (!workspace) {
+          postToPanel({ type: 'log', data: 'Abre una carpeta de workspace antes de guardar las fases.' });
+          break;
+        }
+
+        if (!existing) {
+          postToPanel({ type: 'log', data: 'Configura primero la URL de la app (pestaña Configuración) y guarda.' });
+          break;
+        }
+
+        const { phases, warnings } = normalizePhases(message.data);
+
+        for (const warning of warnings) {
+          postToPanel({ type: 'log', data: warning });
+        }
+
+        if (phases.length === 0) {
+          postToPanel({ type: 'log', data: 'No hay fases válidas: no se ha guardado nada.' });
+          break;
+        }
+
+        existing.phases = phases;
+        const saved = saveProjectConfig(workspace, existing);
+
+        postToPanel({ type: 'log', data: saved ? `${phases.length} fase(s) guardadas.` : 'No se han podido guardar las fases.' });
+
+        // Se devuelve lo realmente guardado para que el panel muestre lo que se
+        // ha descartado (una fase sin id válido, unos pasos mal escritos...).
+        postToPanel({
+          type: 'settings',
+          data: {
+            settings: getExtensionSettings(),
+            project: saved ? existing : loadProjectConfig(workspace),
+            progress: lastProgress,
+            running: phaseManager?.isRunning ?? false
+          }
+        });
         break;
       }
 

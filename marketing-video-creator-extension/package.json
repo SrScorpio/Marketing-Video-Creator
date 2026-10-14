@@ -28,7 +28,8 @@
     "onCommand:marketing-video-creator.cancelDemo",
     "onCommand:marketing-video-creator.exportMobile",
     "onCommand:marketing-video-creator.exportDesktop",
-    "onCommand:marketing-video-creator.openOutputFolder"
+    "onCommand:marketing-video-creator.openOutputFolder",
+    "onCommand:marketing-video-creator.createPromptPack"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -62,6 +63,11 @@
         "command": "marketing-video-creator.openOutputFolder",
         "title": "Marketing Video Creator: Abrir carpeta de salida",
         "icon": "$(folder-opened)"
+      },
+      {
+        "command": "marketing-video-creator.createPromptPack",
+        "title": "Marketing Video Creator: Crear pack de prompts (asistente/autónomo)",
+        "icon": "$(comment-discussion)"
       }
     ],
     "configuration": {

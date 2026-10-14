@@ -28,6 +28,12 @@ export interface PhaseConfig {
   id: string;
   label: string;
   duration: number;
+  /** URL propia de la fase (si no, se usa la del proyecto). */
+  url?: string;
+  /** Texto de la narración. Vacío = fase sin voz. */
+  script?: string;
+  /** Pasos de captura declarados para esta fase. */
+  steps?: CaptureStep[];
 }
 
 export type PhaseStatus = 'pending' | 'capturing' | 'narrating' | 'rendering' | 'done' | 'error' | 'cancelled';

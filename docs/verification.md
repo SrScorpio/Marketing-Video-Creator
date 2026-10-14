@@ -10,10 +10,13 @@ Node 22, FFmpeg/FFprobe reales, Chromium de Playwright real y **VS Code real**
 | Nivel | Comando | Resultado |
 |---|---|---|
 | Compilación | `npm run compile` | limpio (tsc + `vite build`) |
-| Tests (unitarios + integración FFmpeg) | `npm test` | **65/65** (7 ficheros) |
+| Tests (unitarios + integración FFmpeg) | `npm test` | **93/93** (9 ficheros) |
 | E2E con navegador y FFmpeg reales | `npm run test:e2e` | **18/18** comprobaciones |
-| Extension Host en VS Code real | `npm run test:vscode` | **6/6**, `Exit code 0` |
-| Empaquetado instalable | `npm run package:vsix` | VSIX 958 files, 6.67 MB |
+| Extension Host en VS Code real | `npm run test:vscode` | **7/7**, `Exit code 0` |
+| Empaquetado instalable | `npm run package:vsix` | VSIX 962 files, 6.68 MB |
+
+La última pasada (capa de autoría: guion, pasos de captura y pack de prompts) está
+al final del documento, en **Cuarta pasada**.
 
 ## Salida real
 
@@ -208,3 +211,122 @@ del archivo (no la salida del comando de empaquetado):
 - **Publicación en el Marketplace**: fuera de alcance.
 - Los MP4 de la evidencia son de una app de prueba local de 2 fases; no sustituyen
   a una demo real de un producto concreto.
+
+## Cuarta pasada · capa de autoría (guion, pasos y pack de prompts)
+
+Motivo: el pipeline ejecutaba fases declaradas, pero nada escribía esas
+declaraciones. Esta pasada añade el eslabón que faltaba (esquema con `script`/
+`steps` por fase, panel que los edita y guarda, y pack de prompts para que el
+agente de chat los redacte en modo wizard o autónomo) y lo verifica.
+
+Cambios verificados en esta pasada:
+
+- `src/config/project-schema.ts` (nuevo): esquema y normalización sin VS Code —
+  `parseCaptureSteps` (6 acciones), `normalizePhases` (descarta lo inválido con
+  aviso en vez de en silencio) y `validateProjectConfig`.
+- `PhaseConfig` admite `url`, `script` y `steps`; `extension.ts` los propaga al
+  pipeline (`script: phase.script`, `steps: phase.steps`).
+- El panel edita guion y pasos por fase y los guarda de verdad: el mensaje
+  `savePhases` ahora está implementado en `extension.ts` (antes el botón no
+  hacía nada) y devuelve al panel lo que se ha guardado.
+- `src/prompts/prompt-pack.ts` (nuevo) + comando
+  `marketing-video-creator.createPromptPack`: escribe `.mvc/prompts/` (índice,
+  descubrimiento, guion, pasos, ensamblado) sin pisar lo que ya exista.
+
+Salida real (comando a comando, sin retoques):
+
+```text
+### COMPILE
+dist/panel/src/panel/index.html    0.30 kB │ gzip:  0.23 kB
+dist/panel/index.js              334.08 kB │ gzip: 92.89 kB
+✓ built in 19.61s
+
+### TESTS (vitest)
+ ✓ test/manifest.test.ts (10 tests) 24ms
+ ✓ test/ffmpeg-args.test.ts (17 tests) 35ms
+ ✓ test/prompt-pack.test.ts (9 tests) 28ms
+ ✓ test/project-schema.test.ts (16 tests) 37ms
+ ✓ test/srt.test.ts (12 tests) 27ms
+ ✓ test/pipeline-services.test.ts (4 tests) 18ms
+ ✓ test/panel.test.tsx (8 tests) 583ms
+ ✓ test/phase-manager.test.ts (5 tests) 10404ms
+ ✓ test/ffmpeg-builder.test.ts (12 tests) 11658ms
+ Test Files  9 passed (9)
+      Tests  93 passed (93)
+
+### EXTENSION HOST (VS Code real)
+  Marketing Video Creator · Extension Host
+    ✔ la extensión está presente y se activa (791ms)
+    ✔ registra los 7 comandos declarados en el manifiesto (45ms)
+    ✔ crea el pack de prompts en el workspace y no pisa lo editado (1918ms)
+    ✔ la configuración declarada se resuelve con sus valores por defecto
+    ✔ abre el panel webview sin lanzar errores
+    ✔ los comandos sin captura previa responden sin romper (avisan y salen) (752ms)
+    ✔ el manifest del host expone el bundle compilado del panel
+  7 passing (4s)
+Exit code:   0
+
+### E2E
+✅ FFmpeg disponible en el sistema — /home/hermes/.hermes/tools/ffmpeg-9.0.1-linux-x64/bin/ffmpeg
+✅ Página de prueba creada — file:///home/hermes/.hermes/cache/scratch/mvc-e2e-hfqssb/app.html
+✅ [desktop] fases capturadas sin error — 01-presentacion=done, 02-resultado=done
+✅ [desktop] clip de 01-presentacion generado
+✅ [desktop] clip de 02-resultado generado
+✅ [desktop] subtítulos SRT generados — /home/hermes/.hermes/cache/scratch/mvc-e2e-hfqssb/desktop-run/srt/01-presentacion.srt
+✅ [desktop] MP4 final generado — /home/hermes/.hermes/cache/scratch/mvc-e2e-hfqssb/desktop-run/desktop/demo-video-desktop.mp4
+✅ [desktop] resolución 1920x1080 — obtenido 1920x1080
+✅ [desktop] pista de audio presente
+✅ [desktop] duración > 0 — 5.07s
+✅ [mobile] fases capturadas sin error — 01-presentacion=done, 02-resultado=done
+✅ [mobile] clip de 01-presentacion generado
+✅ [mobile] clip de 02-resultado generado
+✅ [mobile] subtítulos SRT generados — /home/hermes/.hermes/cache/scratch/mvc-e2e-hfqssb/mobile-run/srt/01-presentacion.srt
+✅ [mobile] MP4 final generado — /home/hermes/.hermes/cache/scratch/mvc-e2e-hfqssb/mobile-run/mobile/demo-video-mobile.mp4
+✅ [mobile] resolución 1080x1920 — obtenido 1080x1920
+✅ [mobile] pista de audio presente
+✅ [mobile] duración > 0 — 5.10s
+Artefactos E2E:
+ - desktop: /home/hermes/.hermes/cache/scratch/mvc-e2e-hfqssb/desktop-run/desktop/demo-video-desktop.mp4
+ - mobile:  /home/hermes/.hermes/cache/scratch/mvc-e2e-hfqssb/mobile-run/mobile/demo-video-mobile.mp4
+18/18 comprobaciones OK
+E2E OK
+
+### ffprobe de los MP4
+--- /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/desktop-run/desktop/demo-video-desktop.mp4
+codec_name=h264
+width=1920
+height=1080
+codec_name=aac
+sample_rate=48000
+channels=2
+duration=4.900000
+--- /home/hermes/.hermes/cache/scratch/mvc-e2e-xIJ3eP/mobile-run/mobile/demo-video-mobile.mp4
+codec_name=h264
+width=1080
+height=1920
+codec_name=aac
+sample_rate=48000
+channels=2
+duration=5.002667
+
+### VSIX
+ DONE  Packaged: /tmp/mvc-evidence/marketing-video-creator-0.1.0.vsix (962 files, 6.68 MB)
+    18021  2026-10-14 15:34   extension/dist/extension.js
+   334118  2026-10-14 15:34   extension/dist/panel/index.js
+```
+
+Lectura de resultados:
+
+| Nivel | Resultado |
+|---|---|
+| `npm run compile` | limpio (tsc + vite) |
+| `npm test` (vitest) | 93/93 en 9 ficheros |
+| Extension Host (VS Code 1.141.1 real) | 7/7, salida 0 — incluye escribir el pack de prompts en el workspace y comprobar que no se pisa un fichero editado |
+| E2E en Linux (Chromium + FFmpeg reales) | 18/18; desktop 1920x1080 y mobile 1080x1920 con audio (`aac` 48 kHz estéreo) y ~5 s |
+| `npm run package:vsix` | VSIX de 6,68 MB (962 ficheros) con `extension/dist/extension.js` y `extension/dist/panel/index.js` |
+
+Lo que sigue **sin** verificar (no se puede desde Linux): narración con voz SAPI
+real (Windows), comprobación visual del panel y recorrido manual completo dentro
+de VS Code. El descubrimiento automático de pantallas de una app nueva (crawler)
+todavía no existe: hoy lo cubre el prompt 01 con el agente de chat.
+

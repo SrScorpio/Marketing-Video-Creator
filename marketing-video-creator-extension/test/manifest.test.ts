@@ -24,7 +24,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'ut
 
 const extensionSource = fs.readFileSync(path.join(root, 'src', 'extension.ts'), 'utf-8');
 const settingsSource = fs.readFileSync(path.join(root, 'src', 'config', 'extension-settings.ts'), 'utf-8');
-const projectConfigSource = fs.readFileSync(path.join(root, 'src', 'config', 'project-config.ts'), 'utf-8');
+const projectSchemaSource = fs.readFileSync(path.join(root, 'src', 'config', 'project-schema.ts'), 'utf-8');
 const tsconfig = JSON.parse(fs.readFileSync(path.join(root, 'tsconfig.json'), 'utf-8')) as {
   compilerOptions: { outDir: string; rootDir: string };
 };
@@ -88,7 +88,7 @@ describe('package.json ↔ código', () => {
       }
     ).default;
 
-    const codePhases = extractAll(projectConfigSource, /\{\s*id:\s*'([^']+)',\s*label:\s*'[^']+',\s*duration:\s*\d+\s*\}/g);
+    const codePhases = extractAll(projectSchemaSource, /\{\s*id:\s*'([^']+)',\s*label:\s*'[^']+',\s*duration:\s*\d+\s*\}/g);
 
     expect(codePhases).toEqual(manifestPhases.map(phase => phase.id));
   });
@@ -121,5 +121,14 @@ describe('package.json ↔ código', () => {
     expect(extensionSource).toContain('ffmpeg: services.ffmpeg');
     expect(extensionSource).not.toMatch(/tts:\s*undefined/);
     expect(extensionSource).not.toMatch(/ffmpeg:\s*undefined/);
+  });
+
+  it('el guion y los pasos de cada fase llegan al pipeline', () => {
+    // Sin esto el pipeline recibe `script: ''` y ninguna fase con pasos: la
+    // extensión ejecuta pero no puede narrar ni guiar la captura.
+    expect(extensionSource).toMatch(/script:\s*phase\.script/);
+    expect(extensionSource).toMatch(/steps:\s*phase\.steps/);
+    expect(extensionSource).toMatch(/case 'savePhases'/);
+    expect(extensionSource).toContain('normalizePhases(message.data)');
   });
 });

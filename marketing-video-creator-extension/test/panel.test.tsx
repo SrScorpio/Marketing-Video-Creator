@@ -76,6 +76,16 @@ async function flush(): Promise<void> {
   });
 }
 
+/** Escribe en un campo controlado por React (necesita el setter nativo). */
+async function typeInto(element: HTMLTextAreaElement, value: string): Promise<void> {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+
+  await act(async () => {
+    setter?.call(element, value);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
 /** Entrega un mensaje del host al panel por el listener registrado en `window`. */
 async function sendMessage(data: unknown): Promise<void> {
   if (!messageHandler) {
@@ -206,5 +216,76 @@ describe('panel webview', () => {
     const saved = postMessage.mock.calls.find(call => (call[0] as { type: string }).type === 'saveConfig');
     expect(saved).toBeTruthy();
     expect(saved![0]).toMatchObject({ type: 'saveConfig' });
+  });
+
+  it('guarda el guion y los pasos de cada fase', async () => {
+    await sendMessage({
+      type: 'settings',
+      data: {
+        settings: { apiKey: '', ttsProvider: 'sapi', ttsVoice: 'Microsoft Pablo', playwrightHeadless: true },
+        project: {
+          url: 'https://app.test',
+          variant: 'desktop',
+          phases: [
+            {
+              id: '01-presentacion',
+              label: 'Presentación',
+              duration: 5,
+              script: 'Bienvenido a la demo.',
+              steps: [{ action: 'click', selector: '#empezar' }]
+            }
+          ]
+        },
+        progress: { status: 'idle', progress: 0, phases: [] }
+      }
+    });
+
+    clickByText('Fases');
+    await flush();
+    clickByText('Guardar fases');
+
+    const saved = postMessage.mock.calls.map(call => call[0] as { type: string; data: any }).find(message => message.type === 'savePhases');
+
+    expect(saved).toBeTruthy();
+    expect(saved!.data).toHaveLength(1);
+    expect(saved!.data[0]).toMatchObject({
+      id: '01-presentacion',
+      label: 'Presentación',
+      duration: 5,
+      script: 'Bienvenido a la demo.',
+      steps: [{ action: 'click', selector: '#empezar' }]
+    });
+  });
+
+  it('no envía las fases si los pasos no son JSON válido', async () => {
+    await sendMessage({
+      type: 'settings',
+      data: {
+        settings: { apiKey: '', ttsProvider: 'sapi', ttsVoice: 'Microsoft Pablo', playwrightHeadless: true },
+        project: {
+          url: 'https://app.test',
+          variant: 'desktop',
+          phases: [{ id: '01-presentacion', label: 'Presentación', duration: 5 }]
+        },
+        progress: { status: 'idle', progress: 0, phases: [] }
+      }
+    });
+
+    clickByText('Fases');
+    await flush();
+
+    const textareas = [...container.querySelectorAll('textarea')] as HTMLTextAreaElement[];
+    expect(textareas).toHaveLength(2); // guion y pasos
+    await typeInto(textareas[1], '{no es json');
+
+    clickByText('Guardar fases');
+    await flush();
+
+    // El aviso va al log, que se pinta en la pestaña de progreso.
+    clickByText('Progreso');
+    await flush();
+
+    expect(postMessage.mock.calls.some(call => (call[0] as { type: string }).type === 'savePhases')).toBe(false);
+    expect(container.textContent).toContain('no son JSON válido');
   });
 });

@@ -42,16 +42,73 @@ Para probar en VS Code: `F5` (Run Extension) o `npx @vscode/test-cli`.
 
 ## Uso
 
-1. Abre una **carpeta de workspace** (la configuración se guarda en
-   `.marketing-video-creator.json` del workspace).
-2. `Marketing Video Creator: Abrir Panel` → pestaña **Configuración**: define la
-   URL de la app a demostrar, la voz TTS y la variante de grabación.
-3. Pestaña **Fases**: define las fases (id, nombre, duración). Por defecto se
-   usan las 7 fases de `marketingVideoCreator.phases.list`.
+1. Abre una **carpeta de workspace** (la configuración del proyecto vive en
+   `mvc-config.json`; los ajustes de la extensión, en el `settings.json` de VS Code).
+2. Decide **qué se graba y qué se narra**. La extensión ejecuta, pero no adivina las
+   pantallas de tu app: eso se redacta con el pack de prompts
+   (`Marketing Video Creator: Crear pack de prompts` → `.mvc/prompts/`), que tiene los
+   dos modos que pediste:
+   - **Wizard (con preguntas)**: adjunta `.mvc/prompts/00-leeme.md` al chat
+     (`#file:.mvc/prompts/00-leeme.md`) y el agente pregunta (para quién es, qué
+     destacar, qué pantallas, qué datos) y espera tus respuestas.
+   - **Autónomo (`hazlo todo tú`)**: los mismos prompts en *modo autónomo*: el agente
+     investiga la app por su cuenta (código, rutas, e2e, URL), redacta guion y pasos,
+     marca lo que ha supuesto y escribe `mvc-config.json` sin preguntar. Tú lo revisas
+     después y cambias lo que quieras.
+3. Revisa o ajusta en el panel: `Abrir Panel` → **Configuración** (URL, voz, variante) y
+   **Fases** (por fase: nombre, duración, URL, **guion** de la narración y **pasos de
+   captura** en JSON). Botón **Guardar fases**.
 4. `Marketing Video Creator: Iniciar Demo` → el progreso se ve en la pestaña
    **Progreso** (barra + estado por fase + log de eventos).
-5. `Marketing Video Creator: Exportar Mobile` / `Exportar Desktop` → genera el
-   MP4 final. También existe `Cancelar Demo` y `Abrir carpeta de salida`.
+5. `Marketing Video Creator: Exportar Mobile` / `Exportar Desktop` → genera el MP4
+   final. También existen `Cancelar Demo` y `Abrir carpeta de salida`.
+
+### Para que una fase tenga voz y haga algo
+
+- **`script`** (guion): es el texto que se narra y el origen de los subtítulos. Sin
+  guion, la fase se graba sin voz.
+- **`steps`** (pasos): acciones de captura de esa fase. Sin pasos, la fase se graba
+  pero no hace nada visible.
+
+Acciones soportadas en `steps`: `goto {url}`, `click {selector}`, `fill {selector,text}`,
+`press {selector,key}`, `waitForSelector {selector,timeoutMs}`, `wait {ms}`. Los pasos
+mal escritos se descartan con un aviso (no tumba la ejecución) y quedan registrados en
+el log del panel.
+
+### Pack de prompts (`marketing-video-creator.createPromptPack`)
+
+Escribe en el proyecto (sin pisar nada que ya exista):
+
+| Fichero | Para qué |
+|---|---|
+| `.mvc/prompts/00-leeme.md` | Índice: orden de uso y los dos modos |
+| `.mvc/prompts/01-descubrimiento.md` | Inventario de pantallas, flujo, selectores y datos de ejemplo |
+| `.mvc/prompts/02-guion.md` | Narración por fase (tono, duración, español) |
+| `.mvc/prompts/03-pasos-captura.md` | Pasos Playwright por fase con selectores estables |
+| `.mvc/prompts/04-ensamblar-config.md` | Escribe y valida `mvc-config.json` |
+
+### Formato de `mvc-config.json`
+
+```json
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "mi-app",
+    "url": "https://app-a-demostrar",
+    "outputDir": "./output/demo-video",
+    "variant": "desktop",
+    "phases": [
+      {
+        "id": "01-presentacion",
+        "label": "Presentación",
+        "duration": 5,
+        "script": "Texto que se narra.",
+        "steps": [{ "action": "goto", "url": "https://app-a-demostrar/", "waitUntil": "load" }]
+      }
+    ]
+  }
+}
+```
 
 ### Salida
 
@@ -115,7 +172,7 @@ Todas las claves cuelgan de `marketingVideoCreator.*`:
 ## Tests y verificación
 
 ```bash
-npm test            # 65 tests: unitarios, contrato del manifiesto, cableado de ajustes, panel (jsdom) e integración con FFmpeg real
+npm test            # 93 tests: unitarios, contrato del manifiesto, esquema de config, cableado de ajustes, pack de prompts, panel (jsdom) e integración con FFmpeg real
 npm run test:e2e    # E2E en Linux: navegador real + MP4 1920x1080 y 1080x1920 verificados con ffprobe
 npm run test:vscode # Extension Host: carga la extensión en un VS Code real (Linux sin display: xvfb-run -a)
 npm run package:vsix # genera el .vsix instalable
@@ -124,10 +181,10 @@ npm run package:vsix # genera el .vsix instalable
 | Nivel | Resultado verificado |
 |---|---|
 | `npm run compile` | limpio (tsc + `vite build`) |
-| `npm test` | 65/65 en 7 ficheros |
+| `npm test` | 93/93 en 9 ficheros |
 | `npm run test:e2e` | 18/18 comprobaciones |
-| `npm run test:vscode` | 6/6 en VS Code real (1.141.1), salida 0 |
-| `npm run package:vsix` | VSIX de 6,67 MB con `dist/` y dependencias de ejecución |
+| `npm run test:vscode` | 7/7 en VS Code real (1.141.1), salida 0 — incluye la creación del pack de prompts en disco |
+| `npm run package:vsix` | VSIX de 6,68 MB (962 ficheros) con `dist/` y dependencias de ejecución |
 
 El E2E levanta una página HTML local de prueba, graba dos fases con Playwright,
 monta el vídeo y comprueba con `ffprobe` resolución, audio y duración. Genera los
@@ -160,7 +217,8 @@ src/
 │   ├── playwright-capture.ts # Grabación webm + pasos de captura
 │   ├── tts-service.ts        # Narración TTS (SAPI)
 │   └── ffmpeg-builder.ts     # Clip, concat, variantes, probing
-├── config/               # Ajustes de la extensión y config del proyecto
+├── config/               # Ajustes de la extensión, esquema y config del proyecto
+├── prompts/              # Pack de prompts (wizard / autónomo) que escribe el comando
 ├── utils/                # ffmpeg-args, srt, logger, validators
 └── types/                # Tipos de fase y de configuración
 test/                     # Vitest: unitarios + contrato del manifiesto + panel (jsdom) + integración FFmpeg

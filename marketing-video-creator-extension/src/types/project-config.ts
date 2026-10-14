@@ -2,10 +2,12 @@
  * Tipos para la configuración del proyecto de vídeo.
  */
 
+import { PhaseConfig } from './phase';
+
 export interface ProjectConfig {
   name: string;
   url: string;
-  phases: Array<{ id: string; label: string; duration: number }>;
+  phases: PhaseConfig[];
   outputDir: string;
   variant: 'desktop' | 'mobile' | 'both';
 }

@@ -46,6 +46,27 @@ interface PhaseProgressShape {
   }>;
 }
 
+interface PhaseDraft {
+  id: string;
+  label: string;
+  duration: number;
+  url?: string;
+  script?: string;
+  /** Pasos de captura en texto JSON mientras se editan. */
+  stepsText?: string;
+}
+
+const textareaStyle = {
+  width: '100%',
+  fontFamily: 'var(--vscode-editor-font-family, monospace)',
+  fontSize: '12px',
+  color: 'var(--vscode-input-foreground)',
+  background: 'var(--vscode-input-background)',
+  border: '1px solid var(--vscode-input-border, var(--vscode-panel-border))',
+  borderRadius: '2px',
+  padding: '4px'
+} as const;
+
 const vscode: VsCodeApi =
   typeof acquireVsCodeApi === 'function'
     ? acquireVsCodeApi()
@@ -59,7 +80,7 @@ export default function App() {
   const [ttsVoice, setTtsVoice] = useState('Microsoft Pablo');
   const [headless, setHeadless] = useState(true);
   const [variant, setVariant] = useState<'desktop' | 'mobile'>('desktop');
-  const [phases, setPhases] = useState<Array<{ id: string; label: string; duration: number }>>([]);
+  const [phases, setPhases] = useState<PhaseDraft[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
   const [progress, setProgress] = useState<PhaseProgressShape>({ status: 'idle', progress: 0, phases: [] });
   const [videoPath, setVideoPath] = useState<string>('');
@@ -80,7 +101,12 @@ export default function App() {
           setHeadless(message.data.settings?.playwrightHeadless ?? true);
           if (message.data.project) {
             setUrl(message.data.project.url ?? '');
-            setPhases(message.data.project.phases ?? []);
+            setPhases(
+              (message.data.project.phases ?? []).map((phase: PhaseDraft & { steps?: unknown[] }) => ({
+                ...phase,
+                stepsText: phase.steps && phase.steps.length > 0 ? JSON.stringify(phase.steps, null, 2) : ''
+              }))
+            );
             setVariant(message.data.project.variant === 'mobile' ? 'mobile' : 'desktop');
           }
           setProgress(message.data.progress ?? { status: 'idle', progress: 0, phases: [] });
@@ -129,13 +155,47 @@ export default function App() {
     ]);
   };
 
-  const handleChangePhase = (id: string, field: 'label' | 'duration', value: string | number) => {
+  const handleChangePhase = (id: string, field: keyof PhaseDraft, value: string | number) => {
     setPhases(previous => previous.map(phase => (phase.id === id ? { ...phase, [field]: value } : phase)));
   };
 
   const handleSavePhases = () => {
-    send('savePhases', phases);
-    appendLog(`${phases.length} fase(s) enviadas para guardar.`);
+    const prepared: Array<Record<string, unknown>> = [];
+    const parseErrors: string[] = [];
+
+    for (const phase of phases) {
+      const stepsText = (phase.stepsText ?? '').trim();
+      let steps: unknown;
+
+      if (stepsText) {
+        try {
+          steps = JSON.parse(stepsText);
+        } catch {
+          parseErrors.push(`${phase.label}: los pasos no son JSON válido.`);
+          continue;
+        }
+      }
+
+      prepared.push({
+        id: phase.id,
+        label: phase.label,
+        duration: phase.duration,
+        url: phase.url?.trim() || undefined,
+        script: phase.script?.trim() || undefined,
+        steps
+      });
+    }
+
+    if (parseErrors.length > 0) {
+      for (const error of parseErrors) {
+        appendLog(error);
+      }
+      appendLog('No se han guardado las fases: corrige los pasos marcados.');
+      return;
+    }
+
+    send('savePhases', prepared);
+    appendLog(`${prepared.length} fase(s) enviadas para guardar.`);
   };
 
   return (
@@ -208,6 +268,11 @@ export default function App() {
       {activeTab === 1 && (
         <div>
           <strong>Fases del vídeo</strong>
+          <p style={{ marginTop: '4px' }}>
+            Cada fase tiene su guion (lo que se narra) y sus pasos de captura. Acciones válidas:{' '}
+            <code>goto</code> {'{url}'}, <code>click</code> {'{selector}'}, <code>fill</code> {'{selector, text}'},{' '}
+            <code>press</code> {'{selector, key}'}, <code>waitForSelector</code> {'{selector, timeoutMs}'}, <code>wait</code> {'{ms}'}.
+          </p>
           <div style={{ marginTop: '12px', marginBottom: '12px' }}>
             <Button onClick={handleAddPhase}>Añadir fase</Button>{' '}
             <Button onClick={handleSavePhases}>Guardar fases</Button>
@@ -245,6 +310,34 @@ export default function App() {
                 value={String(phase.duration)}
                 onChange={(event: any) => handleChangePhase(phase.id, 'duration', Number(event.target.value) || 0)}
                 style={{ width: '100%', display: 'block' }}
+              />
+              <TextField
+                label="URL de la fase (opcional; si no, la del proyecto)"
+                value={phase.url ?? ''}
+                onChange={(event: any) => handleChangePhase(phase.id, 'url', event.target.value)}
+                style={{ width: '100%', display: 'block' }}
+              />
+              <label style={{ display: 'block', marginTop: '8px', marginBottom: '4px' }}>
+                Guion de la narración (vacío = fase sin voz)
+              </label>
+              <textarea
+                aria-label="Guion de la narración"
+                value={phase.script ?? ''}
+                onChange={(event: any) => handleChangePhase(phase.id, 'script', event.target.value)}
+                rows={3}
+                placeholder="Ej.: En esta pantalla se crea la ficha del caballo con sus datos básicos."
+                style={textareaStyle}
+              />
+              <label style={{ display: 'block', marginTop: '8px', marginBottom: '4px' }}>
+                Pasos de captura (JSON, opcional)
+              </label>
+              <textarea
+                aria-label="Pasos de captura"
+                value={phase.stepsText ?? ''}
+                onChange={(event: any) => handleChangePhase(phase.id, 'stepsText', event.target.value)}
+                rows={4}
+                placeholder='[{"action":"click","selector":"#nueva-ficha"},{"action":"fill","selector":"#nombre","text":"Rocinante"}]'
+                style={textareaStyle}
               />
             </div>
           ))}

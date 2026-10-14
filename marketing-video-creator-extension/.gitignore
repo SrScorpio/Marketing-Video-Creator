@@ -29,3 +29,6 @@ npm-debug.log*
 
 # Panel build
 dist/panel/
+
+# Salida del test del pack de prompts (se regenera en cada ejecución)
+test/vscode/fixture-workspace/.mvc/

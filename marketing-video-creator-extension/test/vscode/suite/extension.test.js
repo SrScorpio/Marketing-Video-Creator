@@ -20,7 +20,8 @@ const COMMANDS = [
   'marketing-video-creator.cancelDemo',
   'marketing-video-creator.exportMobile',
   'marketing-video-creator.exportDesktop',
-  'marketing-video-creator.openOutputFolder'
+  'marketing-video-creator.openOutputFolder',
+  'marketing-video-creator.createPromptPack'
 ];
 
 function getExtension() {
@@ -37,13 +38,40 @@ suite('Marketing Video Creator · Extension Host', () => {
     assert.strictEqual(extension.isActive, true, 'la extensión no quedó activa');
   });
 
-  test('registra los 6 comandos declarados en el manifiesto', async () => {
+  test('registra los 7 comandos declarados en el manifiesto', async () => {
     await getExtension().activate();
 
     const registered = await vscode.commands.getCommands(true);
     for (const command of COMMANDS) {
       assert.ok(registered.includes(command), `comando no registrado: ${command}`);
     }
+  });
+
+  test('crea el pack de prompts en el workspace y no pisa lo editado', async () => {
+    const fs = require('fs');
+    const path = require('path');
+    await getExtension().activate();
+
+    const folder = vscode.workspace.workspaceFolders[0];
+    assert.ok(folder, 'el host de test necesita una carpeta de workspace');
+
+    const esperados = ['00-leeme.md', '01-descubrimiento.md', '02-guion.md', '03-pasos-captura.md', '04-ensamblar-config.md'];
+    const ruta = nombre => path.join(folder.uri.fsPath, '.mvc', 'prompts', nombre);
+
+    await vscode.commands.executeCommand('marketing-video-creator.createPromptPack');
+    await new Promise(resolve => setTimeout(resolve, 750));
+
+    for (const nombre of esperados) {
+      assert.ok(fs.existsSync(ruta(nombre)), `no se creó ${nombre}`);
+      assert.ok(fs.readFileSync(ruta(nombre), 'utf-8').length > 300, `${nombre} se ha escrito vacío`);
+    }
+
+    // Segunda ejecución: no debe sobrescribir el trabajo del usuario.
+    const editado = ruta('02-guion.md');
+    fs.writeFileSync(editado, '# mi guion editado', 'utf-8');
+    await vscode.commands.executeCommand('marketing-video-creator.createPromptPack');
+    await new Promise(resolve => setTimeout(resolve, 750));
+    assert.strictEqual(fs.readFileSync(editado, 'utf-8'), '# mi guion editado');
   });
 
   test('la configuración declarada se resuelve con sus valores por defecto', async () => {
