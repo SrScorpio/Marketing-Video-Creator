@@ -111,17 +111,34 @@ Todas las claves cuelgan de `marketingVideoCreator.*`:
 | `variants.desktop.width/height` | Variante desktop | `1920x1080` |
 | `phases.list` | Fases del vídeo | 7 fases por defecto |
 
-## Tests
+## Tests y verificación
 
 ```bash
-npm test          # 46 tests (unitarios + integración con FFmpeg real)
-npm run test:e2e  # E2E en Linux: navegador real + MP4 1920x1080 y 1080x1920 verificados con ffprobe
+npm test            # 60 tests: unitarios, contrato del manifiesto, panel (jsdom) e integración con FFmpeg real
+npm run test:e2e    # E2E en Linux: navegador real + MP4 1920x1080 y 1080x1920 verificados con ffprobe
+npm run test:vscode # Extension Host: carga la extensión en un VS Code real (Linux sin display: xvfb-run -a)
+npm run package:vsix # genera el .vsix instalable
 ```
+
+| Nivel | Resultado verificado |
+|---|---|
+| `npm run compile` | limpio (tsc + `vite build`) |
+| `npm test` | 60/60 en 6 ficheros |
+| `npm run test:e2e` | 18/18 comprobaciones |
+| `npm run test:vscode` | 6/6 en VS Code real (1.141.1), salida 0 |
+| `npm run package:vsix` | VSIX de 6,66 MB con `dist/` y dependencias de ejecución |
 
 El E2E levanta una página HTML local de prueba, graba dos fases con Playwright,
 monta el vídeo y comprueba con `ffprobe` resolución, audio y duración. Genera los
 artefactos en un directorio temporal; con `MVC_E2E_KEEP=1` no se borra para poder
 inspeccionarlos.
+
+Los tests del Extension Host (`test/vscode/`) son JS plano porque VS Code los
+ejecuta sin transpilar; `scripts/vscode-test.mjs` fija un `--user-data-dir` corto
+(el de por defecto supera el límite de 107 caracteres del socket UNIX).
+
+Evidencia detallada, incluida la salida real de cada comando y lo que queda fuera
+de la verificación: `../docs/verification.md`.
 
 ## Fuera de alcance (Fase 2)
 
@@ -145,8 +162,10 @@ src/
 ├── config/               # Ajustes de la extensión y config del proyecto
 ├── utils/                # ffmpeg-args, srt, logger, validators
 └── types/                # Tipos de fase y de configuración
-test/                     # Vitest: unitarios + integración con FFmpeg real
+test/                     # Vitest: unitarios + contrato del manifiesto + panel (jsdom) + integración FFmpeg
+test/vscode/              # Extension Host: la extensión dentro de un VS Code real
 scripts/e2e-linux.mjs     # E2E con navegador y FFmpeg reales
+scripts/vscode-test.mjs   # Lanzador de los tests del Extension Host
 ```
 
 ## Licencia

@@ -3,6 +3,11 @@
   "displayName": "Marketing Video Creator",
   "description": "Genera vídeos de demo para aplicaciones web capturando flujos con Playwright, añadiendo narración TTS y montando el resultado con FFmpeg.",
   "version": "0.1.0",
+  "publisher": "scolf",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SrScorpio/Marketing-Video-Creator.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -79,7 +84,11 @@
         },
         "marketingVideoCreator.tts.provider": {
           "type": "string",
-          "enum": ["sapi", "edge-tts", "external"],
+          "enum": [
+            "sapi",
+            "edge-tts",
+            "external"
+          ],
           "description": "Provider de TTS a utilizar. 'sapi' usa System.Speech.Synthesis (Microsoft Pablo en Windows), sin API key ni internet. 'edge-tts'/'external' pendientes de Fase 2.",
           "default": "sapi"
         },
@@ -91,12 +100,12 @@
         "marketingVideoCreator.tts.rate": {
           "type": "number",
           "description": "Velocidad de habla TTS (0.5 a 2.0).",
-          "default": 1.0
+          "default": 1
         },
         "marketingVideoCreator.tts.volume": {
           "type": "number",
           "description": "Volumen de la voz TTS (0 a 1).",
-          "default": 1.0
+          "default": 1
         },
         "marketingVideoCreator.stt.enabled": {
           "type": "boolean",
@@ -105,13 +114,22 @@
         },
         "marketingVideoCreator.stt.engine": {
           "type": "string",
-          "enum": ["sapi", "whisper", "external"],
+          "enum": [
+            "sapi",
+            "whisper",
+            "external"
+          ],
           "description": "Motor de STT.",
           "default": "sapi"
         },
         "marketingVideoCreator.images.provider": {
           "type": "string",
-          "enum": ["local", "unsplash", "pexels", "manual"],
+          "enum": [
+            "local",
+            "unsplash",
+            "pexels",
+            "manual"
+          ],
           "description": "Proveedor de imágenes para escenas. 'manual' requiere subir imágenes al proyecto.",
           "default": "manual"
         },
@@ -162,7 +180,11 @@
         },
         "marketingVideoCreator.output.format": {
           "type": "string",
-          "enum": ["mp4", "webm", "mov"],
+          "enum": [
+            "mp4",
+            "webm",
+            "mov"
+          ],
           "description": "Formato de salida por defecto.",
           "default": "mp4"
         },
@@ -205,13 +227,41 @@
           "type": "array",
           "description": "Lista de fases del vídeo demo.",
           "default": [
-            { "id": "01-presentacion", "label": "Presentación", "duration": 5 },
-            { "id": "02-crear-ficha", "label": "Crear Ficha", "duration": 10 },
-            { "id": "03-evaluacion", "label": "Evaluación", "duration": 10 },
-            { "id": "04-descargar-informe", "label": "Descargar Informe", "duration": 8 },
-            { "id": "05-historial", "label": "Historial", "duration": 7 },
-            { "id": "06-cuenta", "label": "Cuenta", "duration": 5 },
-            { "id": "07-cierre", "label": "Cierre", "duration": 5 }
+            {
+              "id": "01-presentacion",
+              "label": "Presentación",
+              "duration": 5
+            },
+            {
+              "id": "02-crear-ficha",
+              "label": "Crear Ficha",
+              "duration": 10
+            },
+            {
+              "id": "03-evaluacion",
+              "label": "Evaluación",
+              "duration": 10
+            },
+            {
+              "id": "04-descargar-informe",
+              "label": "Descargar Informe",
+              "duration": 8
+            },
+            {
+              "id": "05-historial",
+              "label": "Historial",
+              "duration": 7
+            },
+            {
+              "id": "06-cuenta",
+              "label": "Cuenta",
+              "duration": 5
+            },
+            {
+              "id": "07-cierre",
+              "label": "Cierre",
+              "duration": 5
+            }
           ]
         }
       }
@@ -228,7 +278,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "node ./scripts/e2e-linux.mjs",
-    "test:vscode": "vscode-test"
+    "test:vscode": "node ./scripts/vscode-test.mjs",
+    "package:vsix": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
@@ -236,8 +287,10 @@
     "@types/react-dom": "^18.2.18",
     "@types/vscode": "^1.85.0",
     "@vitejs/plugin-react": "^4.2.1",
-    "@vscode/test-cli": "^0.0.6",
     "@vscode/test-electron": "^2.3.9",
+    "@vscode/vsce": "^4.0.0",
+    "jsdom": "^30.1.2",
+    "mocha": "^12.0.3",
     "typescript": "^5.3.3",
     "vite": "^5.0.12",
     "vitest": "^2.1.9"

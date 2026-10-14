@@ -8,6 +8,13 @@ node_modules/
 # VS Code
 .vscode/
 
+# Harness de tests del Extension Host (incluye un VS Code descargado)
+.vscode-test/
+
+# Salida del pipeline de vídeo
+output/
+*.vsix
+
 # OS
 .DS_Store
 Thumbs.db
