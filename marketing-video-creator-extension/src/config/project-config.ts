@@ -1,17 +1,22 @@
 /**
- * Gestión de configuración del proyecto de vídeo.
+ * Gestión de configuración del proyecto de vídeo (acceso a disco + VS Code).
+ *
+ * El esquema y la normalización viven en `project-schema.ts` (sin VS Code) para
+ * poder probarlos en Node puro; aquí sólo queda la lectura/escritura del fichero
+ * del workspace.
  */
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ProjectConfig, ProjectConfigFile } from '../types/project-config';
-import { isValidUrl, isValidPhaseId, isValidDuration } from '../utils/validators';
+import { CONFIG_VERSION, DEFAULT_PHASES, normalizePhases, validateProjectConfig } from './project-schema';
 import { createLogger } from '../utils/logger';
+
+export { CONFIG_VERSION, DEFAULT_PHASES, normalizePhases, parseCaptureSteps, validateProjectConfig } from './project-schema';
 
 const logger = createLogger('project-config');
 const CONFIG_FILE = 'mvc-config.json';
-const CONFIG_VERSION = '1.0.0';
 
 export function getConfigFilePath(workspaceFolder: vscode.WorkspaceFolder): string {
   return path.join(workspaceFolder.uri.fsPath, CONFIG_FILE);
@@ -34,7 +39,13 @@ export function loadProjectConfig(workspaceFolder: vscode.WorkspaceFolder): Proj
       return null;
     }
 
-    return parsed.project;
+    const { phases, warnings } = normalizePhases(parsed.project?.phases);
+
+    for (const warning of warnings) {
+      logger.warn(warning);
+    }
+
+    return { ...parsed.project, phases };
   } catch (error) {
     logger.error('Error al cargar mvc-config.json:', error);
     return null;
@@ -43,9 +54,15 @@ export function loadProjectConfig(workspaceFolder: vscode.WorkspaceFolder): Proj
 
 export function saveProjectConfig(workspaceFolder: vscode.WorkspaceFolder, config: ProjectConfig): boolean {
   const configPath = getConfigFilePath(workspaceFolder);
+  const { phases, warnings } = normalizePhases(config.phases);
+
+  for (const warning of warnings) {
+    logger.warn(warning);
+  }
+
   const file: ProjectConfigFile = {
     version: CONFIG_VERSION,
-    project: config
+    project: { ...config, phases }
   };
 
   try {
@@ -59,30 +76,26 @@ export function saveProjectConfig(workspaceFolder: vscode.WorkspaceFolder, confi
 }
 
 export function createDefaultConfig(workspaceFolder: vscode.WorkspaceFolder, url: string): ProjectConfig {
+  return createConfigFromSettings(workspaceFolder, url, []);
+}
+
+/**
+ * Construye la configuración del proyecto a partir de los ajustes de la
+ * extensión (`marketingVideoCreator.phases.list`), descartando entradas
+ * inválidas y aplicando las fases por defecto si no queda ninguna.
+ */
+export function createConfigFromSettings(
+  workspaceFolder: vscode.WorkspaceFolder,
+  url: string,
+  phases: Array<Record<string, unknown>>
+): ProjectConfig {
+  const { phases: mapped } = normalizePhases(phases);
+
   return {
     name: path.basename(workspaceFolder.uri.fsPath),
     url,
-    phases: [],
+    phases: mapped.length > 0 ? mapped : DEFAULT_PHASES,
     outputDir: './output/demo-video',
     variant: 'desktop'
   };
-}
-
-export function validateProjectConfig(config: ProjectConfig): string[] {
-  const errors: string[] = [];
-
-  if (!isValidUrl(config.url)) {
-    errors.push('URL inválida: ' + config.url);
-  }
-
-  for (const phase of config.phases) {
-    if (!isValidPhaseId(phase.id)) {
-      errors.push('ID de fase inválido: ' + phase.id);
-    }
-    if (!isValidDuration(phase.duration)) {
-      errors.push('Duración inválida para fase ' + phase.id + ': ' + phase.duration + 's');
-    }
-  }
-
-  return errors;
 }

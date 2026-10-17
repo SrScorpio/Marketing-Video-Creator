@@ -38,7 +38,8 @@
         "TtsService con método generate()",
         "Soporte SAPI como provider por defecto",
         "Configurable tts.provider en settings.json",
-        "Funciona sin API key ni internet"
+        "Funciona sin API key ni internet",
+        "Limitación conocida: SAPI solo existe en Windows; en Linux/macOS el pipeline continúa sin narración (pista de audio silenciosa)"
       ],
       "dependencies": [],
       "labels": [
@@ -51,7 +52,7 @@
       "id": "ISSUE-003",
       "title": "FFmpeg builder",
       "description": "Implementación real de FfmpegBuilder con auto-instalación, cut, mux, concat y buildMobileVideo.",
-      "status": "todo",
+      "status": "done",
       "acceptanceCriteria": [
         "FfmpegBuilder con método initialize()",
         "FfmpegBuilder con método cut()",
@@ -71,7 +72,7 @@
       "id": "ISSUE-004",
       "title": "Playwright capture",
       "description": "Implementación real de PlaywrightCapture para grabar flujos demo con Chromium.",
-      "status": "todo",
+      "status": "done",
       "acceptanceCriteria": [
         "PlaywrightCapture con método start()",
         "PlaywrightCapture con método stop()",
@@ -90,7 +91,7 @@
       "id": "ISSUE-005",
       "title": "Panel webview React",
       "description": "Panel completo con tabs: Configuración, Fases, Progreso. Formularios interactivos y feedback visual.",
-      "status": "todo",
+      "status": "done",
       "acceptanceCriteria": [
         "Tab Configuración con formulario URL",
         "Tab Fases con lista editable",
@@ -151,7 +152,7 @@
       "id": "ISSUE-008",
       "title": "Pipeline completo end-to-end",
       "description": "Orquestar captura -> TTS -> SRT -> FFmpeg en un flujo automático desde el panel.",
-      "status": "todo",
+      "status": "done",
       "acceptanceCriteria": [
         "PhaseManager orquesta todo el flujo",
         "Progreso visible en panel webview",
@@ -174,7 +175,7 @@
       "id": "ISSUE-009",
       "title": "Exportar variante desktop",
       "description": "Soporte para exportar vídeo en formato desktop (1920x1080) además de mobile.",
-      "status": "todo",
+      "status": "done",
       "acceptanceCriteria": [
         "buildDesktopVideo() en FfmpegBuilder",
         "Configurable en settings.json",
@@ -192,7 +193,7 @@
     {
       "id": "ISSUE-010",
       "title": "Definir el siguiente requerimiento",
-      "description": "¿Qué se debe construir o mejorar a continuación? Opciones: (1) Playwright capture, (2) Panel webview, (3) Pipeline end-to-end, (4) Nan.Builders Kokoro, (5) Nan.Builders Whisper.",
+      "description": "¿Qué se debe construir o mejorar a continuación? Estado a 14/10/2026: el pipeline end-to-end (captura → TTS → SRT → FFmpeg) está entregado y verificado; Kokoro y Whisper siguen fuera de alcance. Opciones: (1) Nan.Builders Kokoro TTS, (2) Nan.Builders Whisper STT, (3) edición manual de SRT en el panel, (4) publicación en el Marketplace.",
       "status": "todo",
       "acceptanceCriteria": [
         "Usuario decide prioridad",

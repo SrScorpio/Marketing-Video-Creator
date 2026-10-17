@@ -1,0 +1,6 @@
+{
+  "name": "fixture-workspace",
+  "private": true,
+  "description": "Workspace mínimo para los tests del Extension Host.",
+  "marketingVideoCreator": {}
+}

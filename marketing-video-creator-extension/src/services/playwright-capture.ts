@@ -1,236 +1,296 @@
 /**
  * Captura de demo con Playwright.
- * Graba el flujo del usuario en formato webm.
+ * Graba el flujo de una fase en formato webm y ejecuta los pasos declarados.
+ *
+ * Sin dependencias de VS Code: opciones inyectables por constructor.
  */
 
-import { chromium, Browser, BrowserContext, Page } from '@playwright/test';
-import * as path from 'path';
+import { chromium, Browser, BrowserContext, Page, Video } from '@playwright/test';
 import * as fs from 'fs';
+import * as path from 'path';
 import { createLogger } from '../utils/logger';
+import { CaptureStep } from '../types/phase';
 
 const logger = createLogger('playwright-capture');
 
 export interface CaptureOptions {
-  url: string;
+  /** URL inicial de la demo. */
+  url?: string;
+  /** Identificador de la fase que se está grabando (nombre del webm de salida). */
+  phaseId?: string;
   headless?: boolean;
+  /**
+   * Navegador alternativo al Chromium de Playwright (p. ej. Chrome o Edge ya
+   * instalados). Evita tener que descargar el navegador de Playwright.
+   */
+  executablePath?: string;
   width?: number;
   height?: number;
   isMobile?: boolean;
+  deviceScaleFactor?: number;
   slowMo?: number;
-  outputDir?: string;
+  /** Directorio donde se dejan las grabaciones definitivas (.webm). */
+  clipsDir?: string;
+  /** Directorio temporal de grabación (se limpia al cerrar la fase). */
+  tempDir?: string;
+  /** Timeout de navegación y esperas, en ms. */
+  timeoutMs?: number;
 }
 
 export class PlaywrightCapture {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
+  private video: Video | null = null;
   private recording: boolean = false;
-  private outputDir: string = '';
+  private phaseId: string = 'phase';
+  private clipsDir: string = '';
+  private tempDir: string = '';
+  private readonly defaults: CaptureOptions;
 
-  async start(options?: CaptureOptions): Promise<void> {
-    try {
-      const headless = options?.headless ?? true;
-      const width = options?.isMobile ? 432 : (options?.width ?? 1920);
-      const height = options?.isMobile ? 768 : (options?.height ?? 1080);
-      this.outputDir = options?.outputDir ?? path.join(process.cwd(), 'output', 'demo-video', 'clips');
+  constructor(options: CaptureOptions = {}) {
+    this.defaults = options;
+  }
 
-      if (!fs.existsSync(this.outputDir)) {
-        fs.mkdirSync(this.outputDir, { recursive: true });
-        logger.info(`Directorio creado: ${this.outputDir}`);
-      }
+  get isRecording(): boolean {
+    return this.recording;
+  }
 
-      logger.info(`Iniciando Chromium (headless: ${headless}, mobile: ${options?.isMobile ?? false})`);
+  /** Navegador propio configurado (vacío = Chromium de Playwright). */
+  get configuredExecutablePath(): string {
+    return this.defaults.executablePath ?? '';
+  }
 
-      this.browser = await chromium.launch({
-        headless,
-        slowMo: options?.slowMo,
-      });
+  /** Arranca Chromium y empieza a grabar la fase indicada. */
+  async start(options: CaptureOptions = {}): Promise<void> {
+    if (this.recording) {
+      throw new Error('Ya hay una captura en curso.');
+    }
 
-      this.context = await this.browser.newContext({
-        viewport: { width, height },
-        recordVideo: {
-          dir: this.outputDir,
-          size: { width, height },
-        },
-        ...(options?.isMobile ? { deviceScaleFactor: 3 } : {}),
-      });
+    const merged: CaptureOptions = { ...this.defaults, ...options };
+    const headless = merged.headless ?? true;
+    const width = merged.width ?? (merged.isMobile ? 432 : 1920);
+    const height = merged.height ?? (merged.isMobile ? 768 : 1080);
+    const timeout = merged.timeoutMs ?? 30000;
 
-      this.page = await this.context.newPage();
+    this.phaseId = merged.phaseId ?? 'phase';
+    this.clipsDir = merged.clipsDir ?? path.join(process.cwd(), 'output', 'demo-video', 'clips');
+    this.tempDir = merged.tempDir ?? path.join(this.clipsDir, '.rec', this.phaseId);
 
-      if (options?.url) {
-        await this.navigate(options.url);
-      }
+    fs.mkdirSync(this.clipsDir, { recursive: true });
+    fs.mkdirSync(this.tempDir, { recursive: true });
 
-      this.recording = true;
-      logger.info('Captura iniciada correctamente');
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Error al iniciar captura:', errorMsg);
-      throw new Error(`No se pudo iniciar la captura: ${errorMsg}`);
+    // El navegador se lanza una sola vez por ejecución: cada fase abre su
+    // propio contexto (con su propia grabación) y lo cierra al terminar.
+    if (!this.browser || !this.browser.isConnected()) {
+      const executablePath = merged.executablePath?.trim() || undefined;
+      logger.info(
+        `Iniciando Chromium (headless=${headless}) para ${this.phaseId} (${width}x${height})` +
+          (executablePath ? ` con navegador propio: ${executablePath}` : '')
+      );
+      this.browser = await chromium.launch({ headless, slowMo: merged.slowMo, executablePath });
+    }
+
+    this.context = await this.browser.newContext({
+      viewport: { width, height },
+      recordVideo: { dir: this.tempDir, size: { width, height } },
+      ...(merged.isMobile ? { deviceScaleFactor: merged.deviceScaleFactor ?? 3 } : {})
+    });
+    this.context.setDefaultTimeout(timeout);
+    this.context.setDefaultNavigationTimeout(timeout);
+
+    this.page = await this.context.newPage();
+    this.video = this.page.video();
+    this.recording = true;
+
+    if (merged.url) {
+      await this.navigate(merged.url);
     }
   }
 
+  /** Ejecuta una lista de pasos de captura dentro de la fase actual. */
+  async runSteps(steps: CaptureStep[]): Promise<void> {
+    for (const step of steps) {
+      logger.debug(`Paso: ${step.action}`);
+      switch (step.action) {
+        case 'goto':
+          await this.navigate(step.url, step.waitUntil ?? 'networkidle');
+          break;
+        case 'click':
+          await this.click(step.selector);
+          break;
+        case 'fill':
+          await this.fill(step.selector, step.text);
+          break;
+        case 'press':
+          await this.press(step.selector, step.key);
+          break;
+        case 'waitForSelector':
+          await this.waitForSelector(step.selector, step.timeoutMs);
+          break;
+        case 'wait':
+          await this.wait(step.ms);
+          break;
+        default: {
+          const exhaustive: never = step;
+          throw new Error(`Paso de captura no soportado: ${JSON.stringify(exhaustive)}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Cierra el contexto (finaliza la grabación) y devuelve la ruta del webm.
+   *
+   * Usa `page.video()` para localizar EXACTAMENTE la grabación de esta fase en
+   * lugar de elegir "el .webm más reciente" del directorio, que fallaba cuando
+   * había varias fases grabadas.
+   */
   async stop(): Promise<string> {
     if (!this.context) {
-      logger.warn('No hay context activo para detener');
+      logger.warn('No hay contexto activo para detener.');
       return '';
     }
 
-    try {
-      logger.info('Deteniendo grabación...');
-      await this.context.close();
-      
-      // Buscar el archivo de video más reciente en el directorio de output
-      const videoPath = this.findLatestVideo();
-      
-      this.context = null;
-      this.page = null;
-      this.recording = false;
+    const video = this.video;
+    const phaseId = this.phaseId;
+    const clipsDir = this.clipsDir;
+    const tempDir = this.tempDir;
+    const context = this.context;
 
-      if (videoPath) {
-        logger.info(`Vídeo guardado: ${videoPath}`);
-        return videoPath;
-      } else {
-        logger.info('Captura detenida (sin vídeo encontrado)');
-        return '';
-      }
+    this.context = null;
+    this.page = null;
+    this.video = null;
+    this.recording = false;
+
+    await context.close();
+
+    let rawPath = '';
+    try {
+      rawPath = video ? await video.path() : '';
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Error al detener captura:', errorMsg);
-      throw new Error(`No se pudo detener la captura: ${errorMsg}`);
+      logger.warn('No se pudo resolver la ruta del vídeo grabado:', error);
+    }
+
+    if (!rawPath || !fs.existsSync(rawPath)) {
+      rawPath = PlaywrightCapture.findLatestWebm(tempDir);
+    }
+
+    if (!rawPath) {
+      logger.error(`Grabación de ${phaseId} no encontrada en ${tempDir}`);
+      return '';
+    }
+
+    const finalPath = path.join(clipsDir, `${phaseId}.webm`);
+    fs.copyFileSync(rawPath, finalPath);
+    PlaywrightCapture.removeDir(tempDir);
+
+    logger.info(`Vídeo de ${phaseId} guardado: ${finalPath}`);
+    return finalPath;
+  }
+
+  /**
+   * Cierra el navegador y libera todos los recursos. Idempotente: hay que
+   * llamarlo al terminar la ejecución para no dejar procesos Chromium vivos.
+   */
+  async release(): Promise<void> {
+    try {
+      if (this.context) {
+        const context = this.context;
+        this.context = null;
+        this.page = null;
+        this.video = null;
+        this.recording = false;
+        await context.close().catch(() => undefined);
+      }
+      if (this.browser) {
+        await this.browser.close().catch(() => undefined);
+        this.browser = null;
+      }
+      PlaywrightCapture.removeDir(this.tempDir);
+      logger.info('Navegador cerrado');
+    } catch (error) {
+      logger.error('Error al cerrar el navegador:', error);
     }
   }
 
-  private findLatestVideo(): string {
-    try {
-      const files = fs.readdirSync(this.outputDir)
-        .filter(f => f.endsWith('.webm'))
-        .sort()
-        .reverse();
-      
-      if (files.length > 0) {
-        return path.join(this.outputDir, files[0]);
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Error al buscar vídeo:', errorMsg);
-    }
-    return '';
+  async navigate(url: string, waitUntil: 'load' | 'domcontentloaded' | 'networkidle' = 'networkidle'): Promise<void> {
+    await this.withPage(page => page.goto(url, { waitUntil, timeout: 30000 }));
   }
 
-  async navigate(url: string): Promise<void> {
+  async click(selector: string): Promise<void> {
+    await this.withPage(async page => {
+      await page.click(selector);
+      await page.waitForTimeout(300);
+    });
+  }
+
+  async fill(selector: string, text: string): Promise<void> {
+    await this.withPage(async page => {
+      const locator = page.locator(selector);
+      await locator.click();
+      await locator.fill(text);
+      await page.waitForTimeout(300);
+    });
+  }
+
+  async press(selector: string, key: string): Promise<void> {
+    await this.withPage(async page => {
+      await page.press(selector, key);
+      await page.waitForTimeout(200);
+    });
+  }
+
+  async waitForSelector(selector: string, timeoutMs: number = 30000): Promise<void> {
+    await this.withPage(page => page.waitForSelector(selector, { timeout: timeoutMs }));
+  }
+
+  async wait(ms: number): Promise<void> {
+    await this.withPage(page => page.waitForTimeout(ms));
+  }
+
+  async screenshot(filePath: string): Promise<void> {
+    await this.withPage(async page => {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      await page.screenshot({ path: filePath, fullPage: false });
+    });
+  }
+
+  private async withPage(action: (page: Page) => Promise<unknown>): Promise<void> {
     if (!this.page) {
       throw new Error('No hay página activa. Llama a start() primero.');
     }
 
     try {
-      logger.info(`Navegando a: ${url}`);
-      await this.page.goto(url, { 
-        waitUntil: 'networkidle',
-        timeout: 30000 
-      });
-      logger.info('Navegación completada');
+      await action(this.page);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Error al navegar:', errorMsg);
-      throw new Error(`No se pudo navegar a ${url}: ${errorMsg}`);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Error durante la captura:', message);
+      throw new Error(`Fallo de captura: ${message}`);
     }
   }
 
-  async click(selector: string): Promise<void> {
-    if (!this.page) {
-      throw new Error('No hay página activa');
-    }
-
+  private static findLatestWebm(dir: string): string {
     try {
-      logger.debug(`Haciendo click en: ${selector}`);
-      await this.page.click(selector);
-      await this.page.waitForTimeout(300);
-      logger.debug('Click completado');
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Error al hacer click:', errorMsg);
-      throw new Error(`No se pudo hacer click en ${selector}: ${errorMsg}`);
+      const files = fs
+        .readdirSync(dir)
+        .filter(file => file.endsWith('.webm'))
+        .map(file => ({ file, mtime: fs.statSync(path.join(dir, file)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime);
+
+      return files.length > 0 ? path.join(dir, files[0].file) : '';
+    } catch {
+      return '';
     }
   }
 
-  async type(selector: string, text: string): Promise<void> {
-    if (!this.page) {
-      throw new Error('No hay página activa');
-    }
-
+  private static removeDir(dir: string): void {
     try {
-      logger.debug(`Escribiendo en ${selector}: ${text}`);
-      const element = this.page.locator(selector);
-      await element.click();
-      await element.fill('');
-      await element.type(text, { delay: 50 });
-      await this.page.waitForTimeout(500);
-      logger.debug('Escritura completada');
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Error al escribir:', errorMsg);
-      throw new Error(`No se pudo escribir en ${selector}: ${errorMsg}`);
-    }
-  }
-
-  async waitForSelector(selector: string, timeout: number = 30000): Promise<void> {
-    if (!this.page) {
-      throw new Error('No hay página activa');
-    }
-
-    try {
-      logger.debug(`Esperando selector: ${selector} (timeout: ${timeout}ms)`);
-      await this.page.waitForSelector(selector, { timeout });
-      logger.debug('Selector encontrado');
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Error al esperar selector:', errorMsg);
-      throw new Error(`No se pudo encontrar el selector ${selector}: ${errorMsg}`);
-    }
-  }
-
-  async screenshot(filePath: string): Promise<void> {
-    if (!this.page) {
-      throw new Error('No hay página activa');
-    }
-
-    try {
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+      if (dir && fs.existsSync(dir)) {
+        fs.rmSync(dir, { recursive: true, force: true });
       }
-
-      logger.debug(`Capturando screenshot: ${filePath}`);
-      await this.page.screenshot({ path: filePath, fullPage: false });
-      logger.debug('Screenshot guardado');
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Error al hacer screenshot:', errorMsg);
-      throw new Error(`No se pudo guardar screenshot en ${filePath}: ${errorMsg}`);
+    } catch {
+      /* directorio temporal ya eliminado */
     }
-  }
-
-  async close(): Promise<void> {
-    try {
-      if (this.context) {
-        await this.context.close().catch(() => {});
-      }
-      if (this.browser) {
-        await this.browser.close();
-        this.browser = null;
-      }
-      this.context = null;
-      this.page = null;
-      this.recording = false;
-      logger.info('Navegador cerrado');
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Error al cerrar navegador:', errorMsg);
-    }
-  }
-
-  get isRecording(): boolean {
-    return this.recording;
   }
 }

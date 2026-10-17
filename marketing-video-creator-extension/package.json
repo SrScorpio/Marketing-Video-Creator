@@ -3,6 +3,11 @@
   "displayName": "Marketing Video Creator",
   "description": "Genera vídeos de demo para aplicaciones web capturando flujos con Playwright, añadiendo narración TTS y montando el resultado con FFmpeg.",
   "version": "0.1.0",
+  "publisher": "scolf",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SrScorpio/Marketing-Video-Creator.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -19,7 +24,13 @@
   ],
   "activationEvents": [
     "onCommand:marketing-video-creator.startDemo",
-    "onCommand:marketing-videoCreator.openPanel"
+    "onCommand:marketing-video-creator.openPanel",
+    "onCommand:marketing-video-creator.cancelDemo",
+    "onCommand:marketing-video-creator.exportMobile",
+    "onCommand:marketing-video-creator.exportDesktop",
+    "onCommand:marketing-video-creator.openOutputFolder",
+    "onCommand:marketing-video-creator.createPromptPack",
+    "onCommand:marketing-video-creator.checkRequirements"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -35,38 +46,36 @@
         "icon": "$(output)"
       },
       {
+        "command": "marketing-video-creator.cancelDemo",
+        "title": "Marketing Video Creator: Cancelar Demo",
+        "icon": "$(stop)"
+      },
+      {
         "command": "marketing-video-creator.exportMobile",
         "title": "Marketing Video Creator: Exportar Mobile (1080x1920)",
         "icon": "$(device-mobile)"
+      },
+      {
+        "command": "marketing-video-creator.exportDesktop",
+        "title": "Marketing Video Creator: Exportar Desktop (1920x1080)",
+        "icon": "$(device-desktop)"
+      },
+      {
+        "command": "marketing-video-creator.openOutputFolder",
+        "title": "Marketing Video Creator: Abrir carpeta de salida",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "marketing-video-creator.createPromptPack",
+        "title": "Marketing Video Creator: Crear pack de prompts (asistente/autónomo)",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "marketing-video-creator.checkRequirements",
+        "title": "Marketing Video Creator: Comprobar requisitos (FFmpeg, navegador, voz)",
+        "icon": "$(check-all)"
       }
     ],
-    "menus": {
-      "view/item/context": [
-        {
-          "command": "marketing-video-creator.startDemo",
-          "when": "view == marketingVideoCreatorView",
-          "group": "inline"
-        }
-      ]
-    },
-    "views": {
-      "marketingVideoCreatorView": [
-        {
-          "type": "webview",
-          "id": "marketingVideoCreatorPanel",
-          "name": "Panel de Control"
-        }
-      ]
-    },
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "marketingVideoCreatorView",
-          "title": "Marketing Video Creator",
-          "icon": "media/mvc-icon.svg"
-        }
-      ]
-    },
     "configuration": {
       "title": "Marketing Video Creator",
       "properties": {
@@ -87,7 +96,11 @@
         },
         "marketingVideoCreator.tts.provider": {
           "type": "string",
-          "enum": ["sapi", "edge-tts", "external"],
+          "enum": [
+            "sapi",
+            "edge-tts",
+            "external"
+          ],
           "description": "Provider de TTS a utilizar. 'sapi' usa System.Speech.Synthesis (Microsoft Pablo en Windows), sin API key ni internet. 'edge-tts'/'external' pendientes de Fase 2.",
           "default": "sapi"
         },
@@ -99,12 +112,12 @@
         "marketingVideoCreator.tts.rate": {
           "type": "number",
           "description": "Velocidad de habla TTS (0.5 a 2.0).",
-          "default": 1.0
+          "default": 1
         },
         "marketingVideoCreator.tts.volume": {
           "type": "number",
           "description": "Volumen de la voz TTS (0 a 1).",
-          "default": 1.0
+          "default": 1
         },
         "marketingVideoCreator.stt.enabled": {
           "type": "boolean",
@@ -113,61 +126,59 @@
         },
         "marketingVideoCreator.stt.engine": {
           "type": "string",
-          "enum": ["sapi", "whisper", "external"],
+          "enum": [
+            "sapi",
+            "whisper",
+            "external"
+          ],
           "description": "Motor de STT.",
           "default": "sapi"
         },
         "marketingVideoCreator.images.provider": {
           "type": "string",
-          "enum": ["local", "unsplash", "pexels", "manual"],
+          "enum": [
+            "local",
+            "unsplash",
+            "pexels",
+            "manual"
+          ],
           "description": "Proveedor de imágenes para escenas. 'manual' requiere subir imágenes al proyecto.",
           "default": "manual"
         },
         "marketingVideoCreator.playwright.autoInstall": {
           "type": "boolean",
-          "description": "Instalar Playwright Chromium automáticamente la primera vez.",
+          "description": "Permite instalar el navegador de Playwright desde la propia extensión (aviso de requisitos). El navegador no viaja en el VSIX: sin él no se puede grabar.",
           "default": true
         },
         "marketingVideoCreator.playwright.browserPath": {
           "type": "string",
-          "description": "Ruta personalizada al navegador Chromium de Playwright. Dejar vacío para usar la ruta por defecto.",
+          "description": "Ruta a un navegador ya instalado (chrome.exe / msedge.exe). Si se rellena, se usa ese en vez del Chromium de Playwright y no hay que descargar nada.",
           "default": ""
         },
-        "marketingVideoCreator.playwright.viewportWidth": {
-          "type": "number",
-          "description": "Ancho del viewport para capturas.",
-          "default": 1920
-        },
-        "marketingVideoCreator.playwright.viewportHeight": {
-          "type": "number",
-          "description": "Alto del viewport para capturas.",
-          "default": 1080
+        "marketingVideoCreator.playwright.headless": {
+          "type": "boolean",
+          "description": "Grabar sin interfaz gráfica.",
+          "default": true
         },
         "marketingVideoCreator.playwright.fps": {
           "type": "number",
-          "description": "FPS de la captura.",
+          "description": "FPS de captura.",
           "default": 30
         },
         "marketingVideoCreator.ffmpeg.path": {
           "type": "string",
-          "description": "Ruta al ejecutable de FFmpeg. Dejar vacío para usar el descargado automáticamente.",
+          "description": "Ruta al ejecutable de FFmpeg. Dejar vacío para detectarlo en el PATH o descargarlo automáticamente.",
           "default": ""
         },
         "marketingVideoCreator.ffmpeg.autoDownload": {
           "type": "boolean",
-          "description": "Descargar FFmpeg automáticamente si no se encuentra.",
+          "description": "Descargar FFmpeg automáticamente si no está en el PATH (solo Windows: build essentials de gyan.dev en %APPDATA%\\MarketingVideoCreator).",
           "default": true
         },
         "marketingVideoCreator.output.directory": {
           "type": "string",
-          "description": "Directorio de salida para vídeos generados.",
+          "description": "Directorio de salida para vídeos generados (relativo al workspace).",
           "default": "./output/demo-video"
-        },
-        "marketingVideoCreator.output.format": {
-          "type": "string",
-          "enum": ["mp4", "webm", "mov"],
-          "description": "Formato de salida por defecto.",
-          "default": "mp4"
         },
         "marketingVideoCreator.output.videoCodec": {
           "type": "string",
@@ -208,13 +219,41 @@
           "type": "array",
           "description": "Lista de fases del vídeo demo.",
           "default": [
-            { "id": "01-presentacion", "label": "Presentación", "duration": 5 },
-            { "id": "02-crear-ficha", "label": "Crear Ficha", "duration": 10 },
-            { "id": "03-evaluacion", "label": "Evaluación", "duration": 10 },
-            { "id": "04-descargar-informe", "label": "Descargar Informe", "duration": 8 },
-            { "id": "05-historial", "label": "Historial", "duration": 7 },
-            { "id": "06-cuenta", "label": "Cuenta", "duration": 5 },
-            { "id": "07-cierre", "label": "Cierre", "duration": 5 }
+            {
+              "id": "01-presentacion",
+              "label": "Presentación",
+              "duration": 5
+            },
+            {
+              "id": "02-crear-ficha",
+              "label": "Crear Ficha",
+              "duration": 10
+            },
+            {
+              "id": "03-evaluacion",
+              "label": "Evaluación",
+              "duration": 10
+            },
+            {
+              "id": "04-descargar-informe",
+              "label": "Descargar Informe",
+              "duration": 8
+            },
+            {
+              "id": "05-historial",
+              "label": "Historial",
+              "duration": 7
+            },
+            {
+              "id": "06-cuenta",
+              "label": "Cuenta",
+              "duration": 5
+            },
+            {
+              "id": "07-cierre",
+              "label": "Cierre",
+              "duration": 5
+            }
           ]
         }
       }
@@ -226,21 +265,28 @@
     "compile:panel": "vite build --config vite.config.ts",
     "watch": "tsc -watch -p ./tsconfig.json",
     "watch:panel": "vite build --config vite.config.ts --watch",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
+    "typecheck": "tsc -p ./tsconfig.json --noEmit",
+    "pretest": "npm run compile",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node ./scripts/e2e-linux.mjs",
+    "test:vscode": "node ./scripts/vscode-test.mjs",
+    "check:requirements": "node ./scripts/check-requirements.mjs",
+    "package:vsix": "vsce package"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
-    "typescript": "^5.3.3",
-    "@vscode/test-cli": "^0.0.6",
-    "@vscode/test-electron": "^2.3.9",
-    "vite": "^5.0.12",
+    "@types/vscode": "^1.85.0",
     "@vitejs/plugin-react": "^4.2.1",
-    "eslint": "^8.56.0"
+    "@vscode/test-electron": "^2.3.9",
+    "@vscode/vsce": "^4.0.0",
+    "jsdom": "^30.1.2",
+    "mocha": "^12.0.3",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12",
+    "vitest": "^2.1.9"
   },
   "dependencies": {
     "@playwright/test": "^1.41.2",
