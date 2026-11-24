@@ -20,3 +20,14 @@ export {
 } from './crawler';
 export type { LinkDecision } from './crawler';
 export { readPageForInventory } from './page-reader';
+export {
+  DISCOVERY_JSON_FILE,
+  DISCOVERY_MD_FILE,
+  isUnstableSelector,
+  normalizeDiscovery,
+  renderDiscoveryMarkdown,
+  selectorStrategyOf,
+  serializeDiscoveryJson,
+  writeDiscoveryArtifacts
+} from './normalizer';
+export type { DiscoveryArtifacts, NormalizedDiscovery, NormalizeOptions } from './normalizer';
