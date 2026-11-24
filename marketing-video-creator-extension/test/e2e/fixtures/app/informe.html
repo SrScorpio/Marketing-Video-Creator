@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Informe de actividad — Tienda E2E</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header>
+    <h1 id="titulo-informe">Informe de actividad</h1>
+    <p>Pantalla 3 de 3 del fixture E2E.</p>
+  </header>
+
+  <nav aria-label="Migas de pan">
+    <a id="volver-detalle" href="/detalle.html">Volver a la ficha</a>
+    <a id="volver-inicio" href="/index.html">Volver al catálogo</a>
+  </nav>
+
+  <main>
+    <table>
+      <caption>Visitas por mes</caption>
+      <thead>
+        <tr><th scope="col">Mes</th><th scope="col">Visitas</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Enero</td><td>1 240</td></tr>
+        <tr><td>Febrero</td><td>1 780</td></tr>
+      </tbody>
+    </table>
+
+    <button id="descargar-informe" type="button">Descargar informe</button>
+    <p role="status">Informe generado a las 09:30.</p>
+  </main>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

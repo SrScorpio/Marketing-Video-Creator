@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Catálogo de productos — Tienda E2E</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header>
+    <h1 id="titulo-catalogo">Catálogo de productos</h1>
+    <p>Pantalla 1 de 3 del fixture E2E.</p>
+  </header>
+
+  <nav aria-label="Navegación principal">
+    <a id="ir-detalle" href="/detalle.html">Ver ficha del producto</a>
+    <a id="ir-externo" href="https://externo.example.org/oferta">Oferta en la tienda externa</a>
+    <a id="ir-correo" href="mailto:hola@example.org">Escríbenos</a>
+  </nav>
+
+  <main>
+    <section id="seccion-catalogo" aria-label="Productos disponibles">
+      <h2>Productos</h2>
+      <ul>
+        <li>Teclado mecánico</li>
+        <li>Monitor 27 pulgadas</li>
+      </ul>
+
+      <button id="anadir-carrito" type="button">Añadir al carrito</button>
+      <button id="abrir-ayuda" type="button" aria-label="Abrir ayuda">?</button>
+    </section>
+
+    <section id="seccion-solicitud" aria-label="Solicitud de información">
+      <h2>Solicitud de información</h2>
+      <!--
+        Formulario instrumentado: cualquier submit deja rastro en consola y, si
+        hay JavaScript, manda un POST a /__form-submit. El E2E usa el POST (y el
+        action del propio formulario) como evidencia de que el crawler NO envió
+        nada; la consola sirve para el control positivo desde el navegador.
+      -->
+      <form id="form-solicitud" name="solicitud" aria-label="Solicitud de información"
+            action="/__form-submit" method="post" data-e2e-form="solicitud">
+        <label for="nombre">Nombre</label>
+        <input id="nombre" name="nombre" type="text" autocomplete="name">
+
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email">
+
+        <button id="enviar-solicitud" type="submit">Enviar solicitud</button>
+      </form>
+    </section>
+
+    <p role="status">Catálogo cargado.</p>
+  </main>
+
+  <footer>
+    <a id="pie-detalle" href="/detalle.html">Ficha del producto</a>
+  </footer>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

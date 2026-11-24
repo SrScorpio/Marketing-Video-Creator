@@ -10,17 +10,17 @@ Node 22, FFmpeg/FFprobe reales, Chromium de Playwright real y **VS Code real**
 | Nivel | Comando | Resultado |
 |---|---|---|
 | Compilación | `npm run compile` | limpio (tsc + `vite build`) |
-| Tests (unitarios + integración FFmpeg + contrato del manifiesto + panel) | `npm test` | **118/118** (10 ficheros) |
+| Tests (unitarios + integración FFmpeg + contrato del manifiesto + panel) | `npm test` | **215/215** (15 ficheros) |
 | Requisitos externos (FFmpeg, navegador, voz) | `npm run check:requirements` | `exit 0` en esta máquina; `exit 1` cuando falta el navegador, con el comando a ejecutar |
-| E2E con navegador y FFmpeg reales | `npm run test:e2e` | **18/18** comprobaciones |
+| E2E con navegador y FFmpeg reales | `npm run test:e2e` | **18/18** (pipeline) + **65 PASS / 0 FAIL / 1 XFAIL** (descubrimiento SSS-282) |
 | Extension Host en VS Code real | `npm run test:vscode` | **7/7**, `Exit code 0` |
 | Empaquetado instalable | `npm run package:vsix` | VSIX 964 files, 6.68 MB |
 
 Cada pasada de la entrega se documenta al final, en orden cronológico:
 *Primera* (pipeline), *Segunda* (capas de verificación + VSIX), *Tercera*
 (ajustes cableados), *Cuarta* (capa de autoría: guion, pasos y pack de
-prompts) y **Quinta** (requisitos satélite). El resumen de arriba es siempre el
-estado final.
+prompts), *Quinta* (requisitos satélite) y **Sexta** (descubrimiento E2E de
+SSS-282). El resumen de arriba es siempre el estado final.
 
 ## Salida real
 
@@ -412,3 +412,123 @@ que es lo que el pipeline usa de verdad) y `output.format` (el formato siempre h
 sido MP4). Con test de contrato que impide reintroducirlas. Quedan 25 claves, y
 las que se prometen ahora se aplican: `playwright.autoInstall`, `browserPath`,
 `ffmpeg.autoDownload`.
+
+## Sexta pasada · descubrimiento E2E de SSS-282 (3 pantallas → borrador → captura)
+
+Rama `feat/sss-282-e2e` (base `feat/sss-282-panel@3cae316`, que encadena
+crawler → normalizador → convertidor → panel). Todo lo de abajo se ejecutó con
+Playwright y FFmpeg reales; no hay mocks del navegador ni del disco.
+
+### Montaje
+
+- Fixture propio en `test/e2e/fixtures/app/`: `index.html` → `detalle.html` →
+  `informe.html` (enlazadas entre sí), botones, un formulario con `submit` y un
+  enlace externo a `https://externo.example.org/oferta`.
+- El formulario deja dos rastros si alguien lo envía: `console.log` en el
+  navegador y `POST /__form-submit` en el servidor de pruebas. El E2E hace
+  primero un **control positivo** (envío real: consola + POST contados) y
+  después pone las sondas a cero antes de descubrir.
+- Job: `npm run test:e2e:discovery:acceptance`
+  (`scripts/e2e-discovery-acceptance.mjs`). `npm run test:e2e` compila primero
+  (`npm run compile`, para que un clon limpio no dependa de `dist/`) y encadena
+  el E2E del pipeline + este.
+
+### Salida real del descubrimiento (`discoverApp` → `.mvc/discovery.json`)
+
+```text
+baseUrl http://127.0.0.1:43137/index.html  pageCount 3  depthReached 2
+- /detalle.html | Ficha del producto — Tienda E2E | elementos 5 | formularios 0
+  #ver-opiniones #compartir-ficha #volver-catalogo #ir-informe role=status[name="Stock disponible: 12 unidades."]
+- /index.html | Catálogo de productos — Tienda E2E | elementos 10 | formularios 1
+  #anadir-carrito #abrir-ayuda #enviar-solicitud #ir-detalle #ir-externo #ir-correo #pie-detalle #nombre #email role=status[name="Catálogo cargado."]
+- /informe.html | Informe de actividad — Tienda E2E | elementos 4 | formularios 0
+  #descargar-informe #volver-detalle #volver-inicio role=status[name="Informe generado a las 09:30."]
+
+skipped: [{"url":"https://externo.example.org/oferta","reason":"externo"},
+          {"url":"mailto:hola@example.org","reason":"no-http"}]
+warnings: []
+```
+
+Comprobado además que **todos los selectores de control y de campo del
+formulario resuelven en la página real** (`locator(selector).count() ≥ 1`), y
+que el descubrimiento no envió el formulario: 0 POST a `/__form-submit`, 0
+mutaciones HTTP y 0 peticiones al endpoint del formulario.
+
+### Límites con valores bajos
+
+```text
+maxDepth=1  → pageCount 2 (/index.html, /detalle.html);
+              /informe.html en skipped como «max-profundidad»
+maxPages=1  → pageCount 1 (/index.html); el resto en skipped como «max-paginas»
+```
+
+Los dos crawls acotados tampoco mutaron ni enviaron el formulario.
+
+### Borrador (camino real del panel, convertidor real)
+
+```text
+01-catalogo-de-productos 5s http://…/index.html
+   waitForSelector #anadir-carrito + wait 800
+02-ficha-del-producto    8s http://…/detalle.html
+   goto detalle + waitForSelector #ver-opiniones + wait 800
+03-informe-de-actividad  8s http://…/informe.html
+   goto informe + waitForSelector #descargar-informe + wait 800
+```
+
+`.mvc/mvc-config.borrador.json` es el único fichero escrito (`mvc-config.json`
+NO se crea desde el panel), pasa `normalizePhases` sin avisos y
+`validateProjectConfig` sin errores; cero clics y todos los selectores de sus
+pasos resuelven en la app real.
+
+### Captura real del borrador (sin retocar selectores)
+
+`PhaseManager` (Playwright + FFmpeg reales, variante desktop) ejecuta las fases
+tal y como quedaron en disco; el hash del borrador no cambia tras la captura.
+
+```text
+3/3 fases done
+clips/01-catalogo-de-productos.mp4 · 02-ficha-del-producto.mp4 · 03-informe-de-actividad.mp4  (1920x1080)
+srt/01-…srt · 02-…srt · 03-…srt  (4 entradas cada uno)
+desktop/demo-video-desktop.mp4  → h264 1920x1080 + aac, 5.60 s (suma de los 3 clips, ±1 s)
+frames/clip-1.png 132372 B · clip-2.png 98180 B · clip-3.png 87805 B · final.png 128174 B (todas 1920x1080)
+0 submits de formulario · 0 mutaciones HTTP durante la captura
+```
+
+Nota: el TTS por defecto es SAPI (sólo Windows), así que en Linux la captura
+genera las pistas de audio silenciosas y no hay voz; es el comportamiento
+degradado ya documentado en la Quinta pasada, no un fallo de esta.
+
+### Contrato del manifiesto y regresión
+
+```text
+npx vitest run test/manifest.test.ts   → 12/12
+npm test                               → 215/215 (15 ficheros)
+node scripts/e2e-discovery.mjs         → 50 PASS / 0 FAIL
+node scripts/e2e-discovery-normalize.mjs → 40 PASS / 0 FAIL
+node scripts/e2e-discovery-phases.mjs  → 41 PASS / 0 FAIL
+node scripts/e2e-discovery-panel.mjs   → 40 PASS / 0 FAIL
+```
+
+El propio E2E verifica además el manifiesto: `activationEvents` ↔
+`contributes.commands` (mismos ids, únicos, con título), los comandos
+`discoverApp`/`proposePhases` declarados, el bundle de `main` compilado y que
+`test:e2e` encadena este script.
+
+### Defecto abierto que NO bloquea esta aceptación
+
+- **MEDIUM — los selectores de estado del inventario no resuelven.**
+  `discovery.json` publica `role=status[name="…"]` para los elementos `status`
+  (por ejemplo `/index.html` → `role=status[name="Catálogo cargado."]`), pero el
+  rol `status` no toma nombre accesible del contenido: Playwright devuelve 0
+  coincidencias (`role=status` sí resuelve). Origen: `page-reader.ts` genera el
+  selector con `selectorFor(node, { name: text, role: 'status' })`. No afecta al
+  borrador (la guarda excluye `role=status`), por eso el E2E lo marca `XFAIL`
+  con repro y queda abierto para DEV; si se corrige, la línea pasa a PASS.
+
+### Qué NO cubre esta pasada
+
+- `npm run test:vscode` (Extension Host real) no se re-ejecutó aquí: el host
+  sigue cubierto por la Segunda/Cuarta pasada y por `compile` + E2E del modelo.
+- Sólo variante desktop en la captura (la mobile ya la cubre `test:e2e`).
+- El enlace externo se verifica como `skipped`: el E2E **no** navega al dominio
+  externo (por diseño del crawler).
