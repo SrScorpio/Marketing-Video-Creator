@@ -147,7 +147,7 @@ describe('fixtures · normalizeDiscovery (crawler sucio)', () => {
     const elements = doc.pages.find(page => page.path === '/clientes')!.elements;
     const selectors = elements.map(element => element.selector);
 
-    expect(selectors).toContain('role=button[name="Guardar"]');
+    expect(selectors).toContain('form >> role=button[name="Guardar"]');
     expect(selectors).toContain('role=button[name="Ver más"]');
     expect(selectors.some(selector => /css-1x2y3z|sc-bdVaJa/.test(selector))).toBe(false);
     expect(elements.find(element => element.text === 'Guardar')?.selectorStrategy).toBe('role+name');
