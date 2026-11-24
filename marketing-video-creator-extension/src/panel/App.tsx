@@ -56,6 +56,91 @@ interface PhaseDraft {
   stepsText?: string;
 }
 
+/* ------------------------------------------------------------------------- *
+ * Descubrimiento automático (SSS-282)
+ *
+ * Estos tipos son el espejo de `src/discovery/panel-model.ts`: el webview no
+ * puede importar módulos de Node (fs/path), así que el host le manda el payload
+ * ya resumido con el mismo contrato.
+ * ------------------------------------------------------------------------- */
+
+interface DiscoveryProgressShape {
+  status: 'idle' | 'running' | 'cancelled' | 'error';
+  pagesFound: number;
+  currentPage?: string;
+  message?: string;
+}
+
+interface DiscoveredAction {
+  kind: string;
+  text: string;
+  selector: string;
+  selectorStrategy: string;
+}
+
+interface DiscoveredPage {
+  path: string;
+  url: string;
+  title: string;
+  heading: string;
+  actionCount: number;
+  formCount: number;
+  statusCount: number;
+  actions: DiscoveredAction[];
+  forms: Array<{ label: string; fieldCount: number }>;
+}
+
+interface DiscoveryView {
+  generatedAt: string;
+  baseUrl: string;
+  pageCount: number;
+  actionCount: number;
+  formCount: number;
+  depthReached: number;
+  pages: DiscoveredPage[];
+  warnings: string[];
+  skipped: Array<{ url: string; reason: string }>;
+}
+
+interface ProposalPhase {
+  id: string;
+  label: string;
+  duration: number;
+  script: string;
+  url: string | null;
+  steps: Array<{ action: string; selector: string | null; detail: string | null }>;
+  /** Pasos originales: se reenvían a `savePhases` sin reinterpretarlos. */
+  rawSteps: Array<Record<string, unknown>>;
+}
+
+interface DiscoveryPayloadShape {
+  discovery: DiscoveryView | null;
+  proposal: { phases: ProposalPhase[]; warnings: string[]; filePath: string } | null;
+  configExists: boolean;
+  configPhaseCount: number;
+  errors: string[];
+}
+
+const emptyDiscoveryPayload: DiscoveryPayloadShape = {
+  discovery: null,
+  proposal: null,
+  configExists: false,
+  configPhaseCount: 0,
+  errors: []
+};
+
+const idleDiscoveryProgress: DiscoveryProgressShape = { status: 'idle', pagesFound: 0 };
+
+/** Estilo del selector en sólo lectura de la propuesta. */
+const selectorStyle = {
+  fontFamily: 'var(--vscode-editor-font-family, monospace)',
+  fontSize: '12px',
+  wordBreak: 'break-all'
+} as const;
+
+const panelBackground = 'var(--vscode-input-background)';
+const panelBorder = '1px solid var(--vscode-panel-border)';
+
 const textareaStyle = {
   width: '100%',
   fontFamily: 'var(--vscode-editor-font-family, monospace)',
@@ -95,6 +180,10 @@ export default function App() {
   const [progress, setProgress] = useState<PhaseProgressShape>({ status: 'idle', progress: 0, phases: [] });
   const [videoPath, setVideoPath] = useState<string>('');
   const [requirements, setRequirements] = useState<RequirementShape[] | null>(null);
+  const [discoveryPayload, setDiscoveryPayload] = useState<DiscoveryPayloadShape>(emptyDiscoveryPayload);
+  const [discoveryProgress, setDiscoveryProgress] = useState<DiscoveryProgressShape>(idleDiscoveryProgress);
+  const [proposalPhases, setProposalPhases] = useState<ProposalPhase[]>([]);
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
 
   const appendLog = useCallback((message: string) => {
     setLogs(previous => [...previous.slice(-199), message]);
@@ -141,6 +230,18 @@ export default function App() {
         case 'videoReady':
           setVideoPath(message.data.path);
           appendLog(`Vídeo generado (${message.data.variant}): ${message.data.path}`);
+          break;
+
+        case 'discovery': {
+          const payload = (message.data ?? emptyDiscoveryPayload) as DiscoveryPayloadShape;
+          setDiscoveryPayload(payload);
+          setProposalPhases(payload.proposal?.phases ?? []);
+          setConfirmOverwrite(false);
+          break;
+        }
+
+        case 'discoveryProgress':
+          setDiscoveryProgress((message.data ?? idleDiscoveryProgress) as DiscoveryProgressShape);
           break;
 
         default:
@@ -213,12 +314,64 @@ export default function App() {
     appendLog(`${prepared.length} fase(s) enviadas para guardar.`);
   };
 
+  /* ---------------------- asistente de descubrimiento ---------------------- */
+
+  const discoveryRunning = discoveryProgress.status === 'running';
+
+  const handleDiscoverApp = () => {
+    setDiscoveryProgress({ status: 'running', pagesFound: 0 });
+    send('discoverApp');
+    appendLog('Descubrimiento lanzado: recorriendo la app en modo lectura…');
+  };
+
+  const handleCancelDiscovery = () => {
+    send('cancelDiscovery');
+    appendLog('Cancelación del descubrimiento solicitada…');
+  };
+
+  const handleChangeProposalPhase = (id: string, field: 'label' | 'duration' | 'script', value: string | number) => {
+    setProposalPhases(previous => previous.map(phase => (phase.id === id ? { ...phase, [field]: value } : phase)));
+  };
+
+  /** Payload para `savePhases`: los pasos del descubrimiento viajan intactos. */
+  const proposalSavePayload = () =>
+    proposalPhases.map(phase => ({
+      id: phase.id,
+      label: phase.label,
+      duration: phase.duration,
+      url: phase.url ?? undefined,
+      script: phase.script,
+      steps: phase.rawSteps
+    }));
+
+  const handleSaveProposal = () => {
+    if (!discoveryPayload.proposal || proposalPhases.length === 0) {
+      appendLog('No hay propuesta de fases que guardar: ejecuta "Descubrir app" primero.');
+      return;
+    }
+
+    // Nunca se sobrescribe mvc-config.json sin confirmación explícita.
+    if (discoveryPayload.configExists) {
+      setConfirmOverwrite(true);
+      return;
+    }
+
+    send('savePhases', proposalSavePayload());
+    appendLog(`${proposalPhases.length} fase(s) de la propuesta enviadas para guardar.`);
+  };
+
+  const handleConfirmOverwrite = () => {
+    setConfirmOverwrite(false);
+    send('savePhases', proposalSavePayload());
+    appendLog(`Confirmado: ${proposalPhases.length} fase(s) propuestas sustituyen a las de mvc-config.json.`);
+  };
+
   return (
     <div style={{ padding: '16px', fontFamily: 'var(--vscode-font-family)' }}>
       <h2>Marketing Video Creator</h2>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-        {['Configuración', 'Fases', 'Progreso'].map((tab, index) => (
+        {['Configuración', 'Fases', 'Progreso', 'Descubrir'].map((tab, index) => (
           <Button
             key={tab}
             appearance={index === activeTab ? 'primary' : 'secondary'}
@@ -477,6 +630,256 @@ export default function App() {
             ))}
             {logs.length === 0 && <span>Sin eventos.</span>}
           </div>
+        </div>
+      )}
+
+      {activeTab === 3 && (
+        <div>
+          <style>
+            {'@keyframes mvc-spin{to{transform:rotate(360deg)}}' +
+              '.mvc-spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--vscode-panel-border);' +
+              'border-top-color:var(--vscode-progressBar-background);border-radius:50%;' +
+              'animation:mvc-spin .9s linear infinite;vertical-align:middle;margin-right:6px}'}
+          </style>
+
+          <strong>Descubrimiento automático</strong>
+          <p style={{ marginTop: '4px' }}>
+            Recorre la URL configurada en modo <strong>sólo lectura</strong> (mismo origen, sin enviar formularios ni
+            pulsar acciones destructivas) y propone las fases con los selectores reales observados. El inventario queda
+            en <code>.mvc/discovery.json</code> y la propuesta en <code>.mvc/mvc-config.borrador.json</code>.
+          </p>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              marginTop: '12px',
+              marginBottom: '12px'
+            }}
+          >
+            <Button appearance="primary" onClick={handleDiscoverApp} disabled={discoveryRunning}>
+              Descubrir app
+            </Button>
+            <Button appearance="secondary" onClick={handleCancelDiscovery} disabled={!discoveryRunning}>
+              Cancelar descubrimiento
+            </Button>
+            {discoveryRunning && (
+              <span>
+                <span className="mvc-spinner" aria-hidden="true" />
+                {`Descubriendo… ${discoveryProgress.pagesFound} página(s) encontrada(s)`}
+                {discoveryProgress.currentPage ? ` · ${discoveryProgress.currentPage}` : ''}
+              </span>
+            )}
+            {!discoveryRunning && discoveryProgress.status === 'cancelled' && (
+              <span>
+                {discoveryProgress.message ?? 'Descubrimiento cancelado.'} ({discoveryProgress.pagesFound} página(s)
+                antes de parar)
+              </span>
+            )}
+            {!discoveryRunning && discoveryProgress.status === 'error' && (
+              <span>⚠️ {discoveryProgress.message ?? 'El descubrimiento ha fallado.'}</span>
+            )}
+          </div>
+
+          {discoveryPayload.errors.length > 0 && (
+            <ul style={{ marginTop: 0, paddingLeft: '18px' }}>
+              {discoveryPayload.errors.map(error => (
+                <li key={error}>⚠️ {error}</li>
+              ))}
+            </ul>
+          )}
+
+          {discoveryPayload.discovery && (
+            <div
+              style={{
+                border: panelBorder,
+                borderRadius: '4px',
+                padding: '8px',
+                marginBottom: '16px',
+                background: panelBackground
+              }}
+            >
+              <strong>Resumen de lo encontrado</strong>
+              <p style={{ margin: '4px 0' }}>
+                {`${discoveryPayload.discovery.pageCount} páginas · ${discoveryPayload.discovery.actionCount} acciones · ${discoveryPayload.discovery.formCount} formularios`}
+              </p>
+              <p style={{ margin: '0 0 8px 0', opacity: 0.8 }}>
+                {`${discoveryPayload.discovery.baseUrl} · profundidad ${discoveryPayload.discovery.depthReached} · ${discoveryPayload.discovery.generatedAt}`}
+              </p>
+
+              <strong>Páginas encontradas ({discoveryPayload.discovery.pageCount})</strong>
+              <ul style={{ marginTop: '4px', marginBottom: '8px', paddingLeft: '18px' }}>
+                {discoveryPayload.discovery.pages.map(page => (
+                  <li key={page.path} style={{ marginBottom: '4px' }}>
+                    <details>
+                      <summary>
+                        <strong>{page.path}</strong> — {page.title || '(sin título)'}{' '}
+                        <span style={{ opacity: 0.8 }}>
+                          ({page.actionCount} acciones · {page.formCount} formularios)
+                        </span>
+                      </summary>
+                      <ul style={{ marginTop: '4px', paddingLeft: '18px' }}>
+                        {page.actions.map(action => (
+                          <li key={`${page.path}-${action.selector}`} style={selectorStyle}>
+                            <code>{action.selector}</code> · {action.kind}
+                            {action.text ? `: ${action.text}` : ''} <em>({action.selectorStrategy})</em>
+                          </li>
+                        ))}
+                        {page.forms.map(form => (
+                          <li key={`${page.path}-form-${form.label}`} style={selectorStyle}>
+                            formulario <strong>{form.label}</strong> · {form.fieldCount} campo(s)
+                          </li>
+                        ))}
+                        {page.actions.length === 0 && page.forms.length === 0 && <li>Sin controles inventariados.</li>}
+                      </ul>
+                    </details>
+                  </li>
+                ))}
+              </ul>
+
+              {discoveryPayload.discovery.warnings.length > 0 && (
+                <div
+                  style={{
+                    border: '1px solid var(--vscode-inputValidation-warningBorder, #b89500)',
+                    borderRadius: '4px',
+                    padding: '8px',
+                    marginBottom: '8px'
+                  }}
+                >
+                  <strong>Avisos del descubrimiento ({discoveryPayload.discovery.warnings.length})</strong>
+                  <ul style={{ marginTop: '4px', marginBottom: 0, paddingLeft: '18px' }}>
+                    {discoveryPayload.discovery.warnings.map(warning => (
+                      <li key={warning}>⚠️ {warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {discoveryPayload.discovery.skipped.length > 0 && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>{`${discoveryPayload.discovery.skipped.length} enlace(s) saltado(s)`}</strong>
+                  <ul style={{ marginTop: '4px', marginBottom: 0, paddingLeft: '18px' }}>
+                    {discoveryPayload.discovery.skipped.map(skip => (
+                      <li key={`${skip.url}-${skip.reason}`} style={selectorStyle}>
+                        {skip.url} — <em>{skip.reason}</em>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <strong>Propuesta de fases</strong>
+          {!discoveryPayload.proposal || proposalPhases.length === 0 ? (
+            <p style={{ marginTop: '4px' }}>
+              Sin propuesta todavía: pulsa <strong>Descubrir app</strong> para generarla (o revisa los avisos de
+              arriba).
+            </p>
+          ) : (
+            <>
+              <p style={{ marginTop: '4px' }}>
+                Guion y duración se editan; los pasos y sus selectores se muestran en sólo lectura porque son los
+                observados en la app (<code>{discoveryPayload.proposal.filePath}</code>).
+              </p>
+              {discoveryPayload.proposal.warnings.length > 0 && (
+                <ul style={{ marginTop: 0, paddingLeft: '18px' }}>
+                  {discoveryPayload.proposal.warnings.map(warning => (
+                    <li key={warning}>⚠️ {warning}</li>
+                  ))}
+                </ul>
+              )}
+              {proposalPhases.map(phase => (
+                <div
+                  key={phase.id}
+                  style={{
+                    marginBottom: '8px',
+                    padding: '8px',
+                    border: panelBorder,
+                    borderRadius: '4px'
+                  }}
+                >
+                  <div style={{ marginBottom: '4px' }}>
+                    <strong>{phase.id}</strong> — {phase.steps.length} paso(s)
+                  </div>
+                  <TextField
+                    label={`Nombre de la fase ${phase.id}`}
+                    value={phase.label}
+                    onChange={(event: any) => handleChangeProposalPhase(phase.id, 'label', event.target.value)}
+                    style={{ width: '100%', display: 'block' }}
+                  />
+                  <TextField
+                    label={`Duración de la fase ${phase.id}`}
+                    value={String(phase.duration)}
+                    onChange={(event: any) =>
+                      handleChangeProposalPhase(phase.id, 'duration', Number(event.target.value) || 0)
+                    }
+                    style={{ width: '100%', display: 'block' }}
+                  />
+                  <label style={{ display: 'block', marginTop: '8px', marginBottom: '4px' }}>
+                    Guion de la narración (borrador: revísalo antes de guardar)
+                  </label>
+                  <textarea
+                    aria-label={`Guion de la fase ${phase.id}`}
+                    value={phase.script}
+                    onChange={(event: any) => handleChangeProposalPhase(phase.id, 'script', event.target.value)}
+                    rows={3}
+                    style={textareaStyle}
+                  />
+                  <label style={{ display: 'block', marginTop: '8px', marginBottom: '4px' }}>
+                    Pasos observados (selectores en sólo lectura)
+                  </label>
+                  <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
+                    {phase.steps.map((step, index) => (
+                      <li key={`${phase.id}-step-${index}`} style={selectorStyle}>
+                        <code>{step.action}</code>
+                        {step.selector ? (
+                          <>
+                            {' → '}
+                            <code>{step.selector}</code>
+                          </>
+                        ) : null}
+                        {step.detail ? ` · ${step.detail}` : ''}
+                      </li>
+                    ))}
+                    {phase.steps.length === 0 && <li>Sin pasos: la fase sólo navega a su URL.</li>}
+                  </ul>
+                </div>
+              ))}
+            </>
+          )}
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
+            <Button appearance="primary" onClick={handleSaveProposal} disabled={proposalPhases.length === 0}>
+              Guardar fases
+            </Button>
+          </div>
+
+          {confirmOverwrite && (
+            <div
+              style={{
+                marginTop: '12px',
+                padding: '8px',
+                border: '1px solid var(--vscode-inputValidation-warningBorder, #b89500)',
+                borderRadius: '4px'
+              }}
+            >
+              <p style={{ marginTop: 0 }}>
+                Ya existe mvc-config.json: al guardar se sustituirán las {discoveryPayload.configPhaseCount} fase(s)
+                actuales por la propuesta. ¿Continuar?
+              </p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <Button appearance="primary" onClick={handleConfirmOverwrite}>
+                  Sobrescribir fases
+                </Button>
+                <Button appearance="secondary" onClick={() => setConfirmOverwrite(false)}>
+                  Cancelar guardado
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

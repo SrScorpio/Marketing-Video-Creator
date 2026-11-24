@@ -17,6 +17,21 @@ import {
   validateProjectConfig
 } from './config/project-config';
 import { PhaseManager } from './services/phase-manager';
+import {
+  applyPhasesDraftToProjectConfig,
+  buildPhasesDraft,
+  crawlApp,
+  discoveryPathOf,
+  discoveryToPhases,
+  loadDiscoveryPanelPayload,
+  normalizeDiscovery,
+  NormalizedDiscovery,
+  RawDiscovery,
+  readDiscoveryDoc,
+  writeDiscoveryArtifacts,
+  writePhasesDraft,
+  writeProposalFromDiscovery
+} from './discovery';
 import { createPipelineServices } from './config/pipeline-services';
 import { PROMPT_ENTRY_FILE, PROMPT_PACK } from './prompts/prompt-pack';
 import {
@@ -35,6 +50,10 @@ let currentPanel: vscode.WebviewPanel | undefined;
 let phaseManager: PhaseManager | undefined;
 let lastProgress: PhaseProgress = { status: 'idle', progress: 0, phases: [] };
 let extensionUri: vscode.Uri | undefined;
+let discoveryChannel: vscode.OutputChannel | undefined;
+/** Cancelación del descubrimiento pedida desde el panel (se consulta por página). */
+let discoveryCancelRequested = false;
+let discoveryRunning = false;
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionUri = context.extensionUri;
@@ -48,12 +67,15 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('marketing-video-creator.exportDesktop', () => handleExport('desktop')),
     vscode.commands.registerCommand('marketing-video-creator.openOutputFolder', () => handleOpenOutputFolder()),
     vscode.commands.registerCommand('marketing-video-creator.createPromptPack', () => handleCreatePromptPack()),
-    vscode.commands.registerCommand('marketing-video-creator.checkRequirements', () => handleCheckRequirements())
+    vscode.commands.registerCommand('marketing-video-creator.checkRequirements', () => handleCheckRequirements()),
+    vscode.commands.registerCommand('marketing-video-creator.discoverApp', () => handleDiscoverApp()),
+    vscode.commands.registerCommand('marketing-video-creator.proposePhases', () => handleProposePhases())
   );
 }
 
 export function deactivate(): void {
   currentPanel?.dispose();
+  discoveryChannel?.dispose();
   logger.info('Marketing Video Creator desactivada');
 }
 
@@ -274,6 +296,350 @@ async function handleCreatePromptPack(): Promise<void> {
 }
 
 /* ------------------------------------------------------------------------- *
+ * Descubrimiento automático de pantallas (SSS-282)
+ *
+ * Recorre la URL de `mvc-config.json` en modo SÓLO LECTURA, normaliza el
+ * inventario y deja `.mvc/discovery.json` + `.mvc/discovery.md` listos para
+ * adjuntar como contexto en los prompts 01/03. Sólo escribe esos dos
+ * artefactos: el resto de `.mvc/` (guion, prompts, config) queda intacto.
+ * ------------------------------------------------------------------------- */
+
+function getDiscoveryChannel(): vscode.OutputChannel {
+  if (!discoveryChannel) {
+    discoveryChannel = vscode.window.createOutputChannel('Marketing Video Creator — Descubrimiento');
+  }
+
+  return discoveryChannel;
+}
+
+async function handleDiscoverApp(origin: 'command' | 'panel' = 'command'): Promise<RawDiscovery | undefined> {
+  const workspace = vscode.workspace.workspaceFolders?.[0];
+
+  if (!workspace) {
+    reportDiscoveryProblem(origin, 'Abre la carpeta del proyecto para descubrir la app.');
+    return undefined;
+  }
+
+  const project = loadProjectConfig(workspace);
+  const url = (project?.url ?? '').trim();
+
+  if (!url) {
+    reportDiscoveryProblem(
+      origin,
+      'Configura primero la URL de la app (pestaña Configuración) y vuelve a lanzar el descubrimiento.'
+    );
+    return undefined;
+  }
+
+  const settings = getExtensionSettings();
+  const channel = getDiscoveryChannel();
+  channel.appendLine('');
+  channel.appendLine(`# Descubrimiento ${new Date().toISOString()}`);
+  channel.appendLine(`URL: ${url} · maxDepth: ${settings.discoveryMaxDepth} · maxPages: ${settings.discoveryMaxPages}`);
+
+  discoveryCancelRequested = false;
+  discoveryRunning = true;
+
+  // El progreso se pinta en el panel y/o en la notificación según el origen.
+  let notify: (message: string) => void = () => undefined;
+
+  const crawl = () =>
+    crawlApp({
+      url,
+      maxDepth: settings.discoveryMaxDepth,
+      maxPages: settings.discoveryMaxPages,
+      headless: settings.playwrightHeadless,
+      executablePath: settings.playwrightBrowserPath.trim() || undefined,
+      storageStatePath: settings.discoveryStorageState.trim() || undefined,
+      repoRoot: workspace.uri.fsPath,
+      isCancelled: () => discoveryCancelRequested,
+      onPage: (page, info) => {
+        channel.appendLine(`  · (${info.index}) ${page.path} — ${page.title}`);
+        notify(`${info.index}: ${page.title || page.path}`);
+        postDiscoveryProgress({ status: 'running', pagesFound: info.index, currentPage: page.path });
+      }
+    });
+
+  let result: RawDiscovery | undefined;
+
+  try {
+    if (origin === 'panel') {
+      postDiscoveryProgress({ status: 'running', pagesFound: 0 });
+      result = await crawl();
+    } else {
+      result = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Marketing Video Creator: descubriendo pantallas',
+          cancellable: true
+        },
+        async (progress, token): Promise<RawDiscovery | undefined> => {
+          notify = message => progress.report({ message });
+          token.onCancellationRequested(() => {
+            discoveryCancelRequested = true;
+          });
+
+          try {
+            return await crawl();
+          } catch (error) {
+            reportError(error);
+            return undefined;
+          }
+        }
+      );
+    }
+  } catch (error) {
+    discoveryRunning = false;
+    reportDiscoveryProblem(origin, error instanceof Error ? error.message : String(error));
+    return undefined;
+  } finally {
+    discoveryRunning = false;
+  }
+
+  if (!result) {
+    reportDiscoveryProblem(origin, 'El descubrimiento no ha devuelto ninguna pantalla.');
+    return undefined;
+  }
+
+  // Cancelado: se respeta lo que hubiera antes y NO se escribe un inventario parcial.
+  if (discoveryCancelRequested) {
+    const message = `Descubrimiento cancelado: ${result.pages.length} página(s) leídas, no se ha escrito el inventario.`;
+    channel.appendLine(`# ${message}`);
+    postDiscoveryProgress({
+      status: 'cancelled',
+      pagesFound: result.pages.length,
+      message: 'Descubrimiento cancelado.'
+    });
+    postToPanel({ type: 'log', data: message });
+    postDiscoveryPayload();
+    return undefined;
+  }
+
+  // Normalización pura (sin navegador) + escritura de los dos artefactos.
+  const normalized = normalizeDiscovery(result);
+  let artifactsText = '';
+
+  try {
+    const artifacts = writeDiscoveryArtifacts(normalized, path.join(workspace.uri.fsPath, '.mvc'));
+    artifactsText = ` Inventario en .mvc/${path.basename(artifacts.jsonPath)} y .mvc/${path.basename(artifacts.mdPath)}.`;
+    channel.appendLine(`Normalizado: ${artifacts.jsonPath}`);
+    channel.appendLine(`Markdown:   ${artifacts.mdPath}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    channel.appendLine(`No se pudo escribir .mvc/discovery.*: ${message}`);
+    logger.error(`No se pudo escribir el inventario normalizado: ${message}`);
+  }
+
+  // Panel: al terminar el inventario se propone el borrador de fases.
+  if (origin === 'panel') {
+    artifactsText += generatePhasesDraft(normalized, workspace, channel);
+  }
+
+  channel.appendLine(JSON.stringify(normalized, null, 2));
+  channel.appendLine(
+    `# Fin: ${normalized.stats.pageCount} pantalla(s), profundidad ${normalized.stats.depthReached}, ${normalized.stats.skipped.length} descartada(s), ${normalized.warnings.length} aviso(s).`
+  );
+
+  const resumen = `Descubrimiento: ${normalized.stats.pageCount} pantalla(s), ${normalized.stats.skipped.length} enlace(s) descartado(s), ${normalized.warnings.length} aviso(s).`;
+  logger.info(resumen);
+  postToPanel({ type: 'log', data: resumen });
+
+  // El panel refresca páginas + propuesta (el borrador lo escribe el convertidor).
+  postDiscoveryProgress({ status: 'idle', pagesFound: normalized.stats.pageCount });
+  postDiscoveryPayload();
+
+  if (origin === 'command') {
+    void vscode.window.showInformationMessage(
+      `${resumen}${artifactsText} Adjúntalos al chat (#file:.mvc/discovery.md) o míralos en el canal "Marketing Video Creator — Descubrimiento".`
+    );
+  }
+
+  return normalized;
+}
+
+/**
+ * Genera `.mvc/mvc-config.borrador.json` a partir del inventario recién escrito.
+ *
+ * Sólo escribe el borrador: `mvc-config.json` NUNCA se toca aquí. El usuario lo
+ * confirma en el panel (Guardar fases) o en el diálogo modal del comando
+ * `proposePhases`; ambos caminos reutilizan el mismo caso `savePhases`.
+ */
+function generatePhasesDraft(
+  discovery: NormalizedDiscovery,
+  workspace: vscode.WorkspaceFolder,
+  channel: vscode.OutputChannel
+): string {
+  try {
+    const result = writeProposalFromDiscovery(discovery, workspace.uri.fsPath, {
+      base: loadProjectConfig(workspace)
+    });
+
+    if (result.phaseCount === 0) {
+      channel.appendLine('Convertidor: el inventario no permite proponer fases.');
+      postToPanel({ type: 'log', data: 'El inventario no permite proponer fases: revisa los avisos.' });
+      return '';
+    }
+
+    channel.appendLine(
+      `Borrador: ${result.filePath} (${result.phaseCount} fase(s), ${result.warnings.length} aviso(s))`
+    );
+
+    for (const warning of result.warnings) {
+      postToPanel({ type: 'log', data: warning });
+    }
+
+    return ` Borrador de ${result.phaseCount} fase(s) en .mvc/${path.basename(result.filePath)}.`;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    channel.appendLine(`No se pudo generar el borrador de fases: ${message}`);
+    logger.warn(`Borrador de fases: ${message}`);
+    postToPanel({ type: 'log', data: `No se pudo generar el borrador de fases: ${message}` });
+    return '';
+  }
+}
+
+/** Aviso de descubrimiento: al panel (progreso + log) y al usuario si vino del comando. */
+function reportDiscoveryProblem(origin: 'command' | 'panel', message: string): void {
+  logger.warn(`Descubrimiento: ${message}`);
+  postDiscoveryProgress({ status: 'error', pagesFound: 0, message });
+  postToPanel({ type: 'log', data: `Descubrimiento: ${message}` });
+  getDiscoveryChannel().appendLine(`# Error: ${message}`);
+
+  if (origin === 'command') {
+    void vscode.window.showErrorMessage(`Marketing Video Creator: ${message}`);
+  }
+}
+
+/** Envía al panel el resumen de `.mvc/discovery.json` y la propuesta de fases. */
+function postDiscoveryPayload(): void {
+  const workspace = vscode.workspace.workspaceFolders?.[0];
+
+  if (!workspace) {
+    postToPanel({ type: 'discovery', data: loadDiscoveryPanelPayload(process.cwd()) });
+    return;
+  }
+
+  postToPanel({ type: 'discovery', data: loadDiscoveryPanelPayload(workspace.uri.fsPath) });
+}
+
+function postDiscoveryProgress(data: {
+  status: 'idle' | 'running' | 'cancelled' | 'error';
+  pagesFound: number;
+  currentPage?: string;
+  message?: string;
+}): void {
+  postToPanel({ type: 'discoveryProgress', data });
+}
+
+/* ------------------------------------------------------------------------- *
+ * Convertidor discovery → borrador de fases (SSS-282)
+ *
+ * A partir de `.mvc/discovery.json` propone fases ejecutables y SIEMPRE deja el
+ * borrador en `.mvc/mvc-config.borrador.json`. `mvc-config.json` sólo se escribe
+ * si el usuario confirma en el diálogo modal; esa escritura reutiliza el mismo
+ * serializador/escritura atómica que el caso `savePhases` del panel.
+ * ------------------------------------------------------------------------- */
+
+/** Botón del diálogo modal: sin pulsarlo, `mvc-config.json` no se toca. */
+const ACTION_WRITE_PHASES = 'Escribir fases';
+
+async function handleProposePhases(): Promise<void> {
+  const workspace = vscode.workspace.workspaceFolders?.[0];
+
+  if (!workspace) {
+    void vscode.window.showErrorMessage('Abre la carpeta del proyecto para proponer fases.');
+    return;
+  }
+
+  try {
+    const discovery = readDiscoveryDoc(discoveryPathOf(workspace.uri.fsPath));
+    const proposal = discoveryToPhases(discovery);
+
+    if (proposal.phases.length === 0) {
+      void vscode.window.showErrorMessage(
+        'El descubrimiento no tiene pantallas con las que proponer fases. Vuelve a lanzar «Descubrir app».'
+      );
+      return;
+    }
+
+    const draft = buildPhasesDraft(proposal, {
+      base: loadProjectConfig(workspace),
+      baseUrl: discovery.baseUrl
+    });
+    const draftPath = writePhasesDraft(workspace.uri.fsPath, draft);
+    const draftRelative = `.mvc/${path.basename(draftPath)}`;
+
+    for (const warning of proposal.warnings) {
+      logger.warn(warning);
+      postToPanel({ type: 'log', data: warning });
+    }
+
+    const resumen = `Borrador de ${proposal.phases.length} fase(s) en ${draftRelative} (${proposal.warnings.length} aviso(s)).`;
+    logger.info(resumen);
+    postToPanel({ type: 'log', data: resumen });
+
+    const result = await applyPhasesDraftToProjectConfig({
+      workspaceRoot: workspace.uri.fsPath,
+      draft,
+      confirm: async () => {
+        const action = await vscode.window.showWarningMessage(
+          `Borrador de ${proposal.phases.length} fase(s) generado en ${draftRelative}. ` +
+            '¿Escribir estas fases en mvc-config.json? Se reemplazan las fases actuales.',
+          { modal: true },
+          ACTION_WRITE_PHASES
+        );
+
+        return action === ACTION_WRITE_PHASES;
+      }
+    });
+
+    for (const warning of result.warnings) {
+      postToPanel({ type: 'log', data: warning });
+    }
+
+    if (result.reason === 'applied') {
+      postProjectState(workspace);
+      postToPanel({
+        type: 'log',
+        data: `${result.phases.length} fase(s) escritas en mvc-config.json. Revisa el guion [borrador] antes de grabar.`
+      });
+      void vscode.window.showInformationMessage(
+        `Marketing Video Creator: ${result.phases.length} fase(s) guardadas en mvc-config.json. Revisa el guion [borrador] antes de grabar.`
+      );
+      return;
+    }
+
+    if (result.reason === 'cancelled') {
+      postToPanel({ type: 'log', data: `mvc-config.json sin cambios; el borrador queda en ${draftRelative}.` });
+      void vscode.window.showInformationMessage(
+        `Marketing Video Creator: mvc-config.json sin cambios. El borrador queda en ${draftRelative}.`
+      );
+      return;
+    }
+
+    const detalle = result.warnings.length > 0 ? ` ${result.warnings.join(' ')}` : '';
+    void vscode.window.showErrorMessage(
+      `Marketing Video Creator: no se pudo aplicar el borrador (${result.reason}).${detalle}`
+    );
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+/** Envía al panel la configuración y el progreso reales (mismo mensaje que `savePhases`). */
+function postProjectState(workspace: vscode.WorkspaceFolder): void {
+  postToPanel({
+    type: 'settings',
+    data: {
+      settings: getExtensionSettings(),
+      project: loadProjectConfig(workspace),
+      progress: lastProgress,
+      running: phaseManager?.isRunning ?? false
+    }
+  });
+}
+
+/* ------------------------------------------------------------------------- *
  * Requisitos externos: FFmpeg/FFprobe, navegador de Playwright y voz.
  * Ninguno viaja en el VSIX, así que se comprueban antes de grabar para dar un
  * mensaje accionable en lugar del error crudo del binario que falta.
@@ -470,6 +836,28 @@ async function handleWebviewMessage(message: { type: string; data?: unknown }): 
             running: phaseManager?.isRunning ?? false
           }
         });
+        postDiscoveryPayload();
+        break;
+      }
+
+      case 'loadDiscovery': {
+        postDiscoveryPayload();
+        break;
+      }
+
+      case 'discoverApp': {
+        await handleDiscoverApp('panel');
+        break;
+      }
+
+      case 'cancelDiscovery': {
+        if (!discoveryRunning) {
+          postToPanel({ type: 'log', data: 'No hay ningún descubrimiento en curso.' });
+          break;
+        }
+
+        discoveryCancelRequested = true;
+        postToPanel({ type: 'log', data: 'Cancelación solicitada: el recorrido se detendrá al acabar la página actual.' });
         break;
       }
 
@@ -528,15 +916,19 @@ async function handleWebviewMessage(message: { type: string; data?: unknown }): 
 
         // Se devuelve lo realmente guardado para que el panel muestre lo que se
         // ha descartado (una fase sin id válido, unos pasos mal escritos...).
-        postToPanel({
-          type: 'settings',
-          data: {
-            settings: getExtensionSettings(),
-            project: saved ? existing : loadProjectConfig(workspace),
-            progress: lastProgress,
-            running: phaseManager?.isRunning ?? false
-          }
-        });
+        if (saved) {
+          postProjectState(workspace);
+        } else {
+          postToPanel({
+            type: 'settings',
+            data: {
+              settings: getExtensionSettings(),
+              project: loadProjectConfig(workspace),
+              progress: lastProgress,
+              running: phaseManager?.isRunning ?? false
+            }
+          });
+        }
         break;
       }
 

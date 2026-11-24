@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "baseUrl": "http://app.test/clientes",
+  "pages": [
+    {
+      "url": "http://app.test/clientes/42",
+      "path": "/clientes/42",
+      "title": "Cliente 42 — App de prueba",
+      "headings": [
+        { "level": 1, "text": "Cliente 42" },
+        { "level": 2, "text": "Datos de contacto" }
+      ],
+      "elements": [
+        { "kind": "button", "text": "Abrir informe", "selector": "[data-testid=\"abrir-informe\"]", "selectorStrategy": "data-testid", "formLabel": null },
+        { "kind": "button", "text": "Eliminar cliente", "selector": "#eliminar", "selectorStrategy": "id", "formLabel": null },
+        { "kind": "button", "text": "", "selector": "#icono", "selectorStrategy": "id", "formLabel": null },
+        { "kind": "input", "text": "Teléfono", "selector": "#telefono", "selectorStrategy": "id", "formLabel": "Contacto" }
+      ],
+      "forms": [
+        { "label": "Contacto", "fields": [{ "label": "Teléfono", "type": "tel", "selector": "#telefono" }] }
+      ],
+      "statusTexts": []
+    },
+    {
+      "url": "http://app.test/clientes",
+      "path": "/clientes",
+      "title": "Clientes — App de prueba",
+      "headings": [{ "level": 1, "text": "Clientes" }],
+      "elements": [
+        { "kind": "link", "text": "Ver detalle", "selector": "#ir-detalle", "selectorStrategy": "id", "formLabel": null },
+        { "kind": "button", "text": "Guardar", "selector": "#guardar", "selectorStrategy": "id", "formLabel": "Alta" },
+        { "kind": "button", "text": "Pagar ahora", "selector": "#pagar", "selectorStrategy": "id", "formLabel": null },
+        { "kind": "status", "text": "Cargando…", "selector": "role=status", "selectorStrategy": "role+name", "formLabel": null }
+      ],
+      "forms": [
+        {
+          "label": "Alta",
+          "fields": [{ "label": "Nombre", "type": "text", "selector": "#nombre" }]
+        }
+      ],
+      "statusTexts": ["Cargando…"]
+    },
+    {
+      "url": "http://app.test/informe?tab=2",
+      "path": "/informe?tab=2",
+      "title": "Informe — App de prueba",
+      "headings": [{ "level": 1, "text": "Informe" }],
+      "elements": [
+        { "kind": "button", "text": "Descargar informe", "selector": "button[aria-label=\"Descargar informe\"]", "selectorStrategy": "aria-label", "formLabel": null },
+        { "kind": "status", "text": "Informe listo.", "selector": "output.estado", "selectorStrategy": "css", "formLabel": null }
+      ],
+      "forms": [],
+      "statusTexts": ["Informe listo."]
+    },
+    {
+      "url": "http://app.test/vacia",
+      "path": "/vacia",
+      "title": "Vacía",
+      "headings": [],
+      "elements": [],
+      "forms": [],
+      "statusTexts": ["Cargando…"]
+    }
+  ],
+  "stats": {
+    "pageCount": 4,
+    "depthReached": 2,
+    "skipped": [{ "url": "https://externo.test/x", "reason": "externo" }]
+  },
+  "warnings": []
+}

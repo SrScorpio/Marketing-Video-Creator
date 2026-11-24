@@ -17,7 +17,8 @@ vi.mock('@vscode/webview-ui-toolkit/react', async () => {
   const react = await import('react');
 
   // `input` es un elemento vacío: los componentes que lo mapean descartan los
-  // children (labels/etiquetas del toolkit) para no romper el render.
+  // children (labels/etiquetas del toolkit) para no romper el render. El
+  // `label` del toolkit se expone como `aria-label` para poder localizar campos.
   const passthrough = (tag: string, dropChildren = false) => (props: Record<string, unknown>) =>
     react.createElement(
       tag,
@@ -26,7 +27,8 @@ vi.mock('@vscode/webview-ui-toolkit/react', async () => {
         onChange: props.onChange,
         disabled: props.disabled,
         value: props.value,
-        type: props.type
+        type: props.type,
+        'aria-label': props.label ?? props['aria-label']
       },
       dropChildren ? undefined : (props.children as React.ReactNode)
     );
@@ -312,5 +314,260 @@ describe('panel webview', () => {
     clickByText('Comprobar requisitos');
 
     expect(postMessage.mock.calls.some(call => (call[0] as { type: string }).type === 'checkRequirements')).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------------- *
+ * Asistente de descubrimiento (SSS-282)
+ * ------------------------------------------------------------------------- */
+
+/** Payload que el host envía al panel a partir de `.mvc/discovery.json` y el borrador. */
+function discoveryPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    discovery: {
+      generatedAt: '2026-11-24T00:00:00.000Z',
+      baseUrl: 'http://127.0.0.1:4000',
+      pageCount: 3,
+      actionCount: 4,
+      formCount: 1,
+      depthReached: 2,
+      pages: [
+        {
+          path: '/',
+          url: 'http://127.0.0.1:4000/',
+          title: 'Inicio',
+          heading: 'Gestión de caballos',
+          actionCount: 2,
+          formCount: 0,
+          statusCount: 1,
+          actions: [
+            { kind: 'link', text: 'Detalle', selector: '#ir-detalle', selectorStrategy: 'id' },
+            { kind: 'button', text: 'Nueva ficha', selector: '[data-testid="nueva-ficha"]', selectorStrategy: 'data-testid' }
+          ],
+          forms: []
+        },
+        {
+          path: '/detalle.html',
+          url: 'http://127.0.0.1:4000/detalle.html',
+          title: 'Detalle del caballo',
+          heading: 'Ficha del caballo',
+          actionCount: 1,
+          formCount: 1,
+          statusCount: 0,
+          actions: [{ kind: 'input', text: 'Nombre', selector: '#nombre', selectorStrategy: 'id' }],
+          forms: [{ label: 'Ficha', fieldCount: 1 }]
+        },
+        {
+          path: '/informe.html',
+          url: 'http://127.0.0.1:4000/informe.html',
+          title: 'Informe',
+          heading: '',
+          actionCount: 1,
+          formCount: 0,
+          statusCount: 0,
+          actions: [{ kind: 'link', text: 'Volver', selector: 'role=link[name="Volver"]', selectorStrategy: 'role+name' }],
+          forms: []
+        }
+      ],
+      warnings: ['Selector CSS inestable descartado en /informe.html'],
+      skipped: [
+        { url: 'https://externo.test/promo', reason: 'externo' },
+        { url: '/privado.html', reason: 'max-paginas' }
+      ]
+    },
+    proposal: {
+      phases: [
+        {
+          id: '01-inicio',
+          label: 'Inicio',
+          duration: 8,
+          script: '[BORRADOR] Presenta la pantalla de inicio.',
+          url: 'http://127.0.0.1:4000/',
+          steps: [
+            { action: 'goto', selector: null, detail: 'http://127.0.0.1:4000/' },
+            { action: 'click', selector: '#ir-detalle', detail: null }
+          ],
+          rawSteps: [
+            { action: 'goto', url: 'http://127.0.0.1:4000/' },
+            { action: 'click', selector: '#ir-detalle' }
+          ]
+        },
+        {
+          id: '02-detalle',
+          label: 'Detalle del caballo',
+          duration: 10,
+          script: '[BORRADOR] Rellena la ficha.',
+          url: 'http://127.0.0.1:4000/detalle.html',
+          steps: [{ action: 'fill', selector: '#nombre', detail: 'Rocinante' }],
+          rawSteps: [{ action: 'fill', selector: '#nombre', text: 'Rocinante' }]
+        }
+      ],
+      warnings: [],
+      filePath: '/tmp/demo/.mvc/mvc-config.borrador.json'
+    },
+    configExists: false,
+    configPhaseCount: 0,
+    errors: [],
+    ...overrides
+  };
+}
+
+/** Escribe en un `<input>` controlado por React (setter nativo, como `typeInto`). */
+async function typeIntoInput(element: HTMLInputElement, value: string): Promise<void> {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+
+  await act(async () => {
+    setter?.call(element, value);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+async function openDiscoveryTab(): Promise<void> {
+  clickByText('Descubrir');
+  await flush();
+}
+
+function savedPhases(): Array<Record<string, any>> | undefined {
+  const message = postMessage.mock.calls
+    .map(call => call[0] as { type: string; data?: Array<Record<string, any>> })
+    .find(candidate => candidate.type === 'savePhases');
+
+  return message?.data;
+}
+
+describe('panel webview · asistente de descubrimiento', () => {
+  it('pinta una pestaña Descubrir sin tocar las tres existentes', () => {
+    expect(findByText('Configuración')).toBeTruthy();
+    expect(findByText('Fases')).toBeTruthy();
+    expect(findByText('Progreso')).toBeTruthy();
+    expect(findByText('Descubrir')).toBeTruthy();
+  });
+
+  it('lanza el descubrimiento y muestra el progreso con páginas encontradas y cancelación', async () => {
+    await openDiscoveryTab();
+
+    postMessage.mockClear();
+    clickByText('Descubrir app');
+    await flush();
+
+    expect(postMessage.mock.calls.map(call => (call[0] as { type: string }).type)).toContain('discoverApp');
+
+    await sendMessage({
+      type: 'discoveryProgress',
+      data: { status: 'running', pagesFound: 2, currentPage: '/detalle.html', message: 'leyendo /detalle.html' }
+    });
+
+    expect(container.textContent).toContain('2 página(s) encontrada(s)');
+    expect(container.textContent).toContain('/detalle.html');
+    expect(container.querySelector('.mvc-spinner')).toBeTruthy();
+
+    postMessage.mockClear();
+    clickByText('Cancelar descubrimiento');
+    await flush();
+    expect(postMessage.mock.calls.map(call => (call[0] as { type: string }).type)).toContain('cancelDiscovery');
+  });
+
+  it('al cancelar el panel NO queda bloqueado: se rehabilitan los botones y se avisa', async () => {
+    await openDiscoveryTab();
+
+    await sendMessage({ type: 'discoveryProgress', data: { status: 'running', pagesFound: 1 } });
+    expect((findByText('Descubrir app') as HTMLButtonElement).disabled).toBe(true);
+
+    await sendMessage({ type: 'discoveryProgress', data: { status: 'cancelled', pagesFound: 1, message: 'Descubrimiento cancelado.' } });
+    await flush();
+
+    expect((findByText('Descubrir app') as HTMLButtonElement).disabled).toBe(false);
+    expect(container.textContent).toContain('cancelado');
+    expect(container.querySelector('.mvc-spinner')).toBeNull();
+  });
+
+  it('resume lo encontrado: páginas, acciones, formularios, avisos y enlaces saltados', async () => {
+    await sendMessage({ type: 'discovery', data: discoveryPayload() });
+    await openDiscoveryTab();
+
+    expect(container.textContent).toContain('3 páginas · 4 acciones · 1 formularios');
+    expect(container.textContent).toContain('/detalle.html');
+    expect(container.textContent).toContain('Detalle del caballo');
+    expect(container.textContent).toContain('Avisos del descubrimiento');
+    expect(container.textContent).toContain('Selector CSS inestable descartado en /informe.html');
+    expect(container.textContent).toContain('2 enlace(s) saltado(s)');
+    expect(container.textContent).toContain('https://externo.test/promo');
+    expect(container.textContent).toContain('max-paginas');
+    // Los selectores observados se muestran en solo lectura dentro de la propuesta.
+    expect(container.textContent).toContain('#ir-detalle');
+    expect(container.textContent).toContain('role=link[name="Volver"]');
+  });
+
+  it('editar label y guion de una fase se refleja en savePhases con los pasos intactos', async () => {
+    await sendMessage({ type: 'discovery', data: discoveryPayload() });
+    await openDiscoveryTab();
+
+    const labelField = container.querySelector('input[aria-label="Nombre de la fase 01-inicio"]') as HTMLInputElement;
+    const scriptField = container.querySelector('textarea[aria-label="Guion de la fase 01-inicio"]') as HTMLTextAreaElement;
+    expect(labelField).toBeTruthy();
+    expect(scriptField).toBeTruthy();
+
+    await typeIntoInput(labelField, 'Portada');
+    await typeInto(scriptField, 'Guion pulido por el usuario.');
+    await flush();
+
+    postMessage.mockClear();
+    clickByText('Guardar fases');
+    await flush();
+
+    const payload = savedPhases();
+    expect(payload).toBeTruthy();
+    expect(payload).toHaveLength(2);
+    expect(payload![0]).toMatchObject({
+      id: '01-inicio',
+      label: 'Portada',
+      duration: 8,
+      script: 'Guion pulido por el usuario.',
+      steps: [{ action: 'goto', url: 'http://127.0.0.1:4000/' }, { action: 'click', selector: '#ir-detalle' }]
+    });
+    expect(payload![1].steps).toEqual([{ action: 'fill', selector: '#nombre', text: 'Rocinante' }]);
+  });
+
+  it('si ya existe mvc-config.json pide confirmación explícita antes de sobrescribir', async () => {
+    await sendMessage({ type: 'discovery', data: discoveryPayload({ configExists: true, configPhaseCount: 5 }) });
+    await openDiscoveryTab();
+
+    postMessage.mockClear();
+    clickByText('Guardar fases');
+    await flush();
+
+    expect(savedPhases()).toBeUndefined();
+    expect(container.textContent).toContain('Ya existe mvc-config.json');
+    expect(container.textContent).toContain('5 fase(s)');
+
+    clickByText('Sobrescribir fases');
+    await flush();
+
+    expect(savedPhases()).toHaveLength(2);
+  });
+
+  it('la confirmación se puede cancelar sin guardar nada', async () => {
+    await sendMessage({ type: 'discovery', data: discoveryPayload({ configExists: true, configPhaseCount: 1 }) });
+    await openDiscoveryTab();
+
+    postMessage.mockClear();
+    clickByText('Guardar fases');
+    await flush();
+    clickByText('Cancelar guardado');
+    await flush();
+
+    expect(savedPhases()).toBeUndefined();
+    expect(container.textContent).not.toContain('Ya existe mvc-config.json');
+  });
+
+  it('sin artefactos explica qué falta en lugar de romperse', async () => {
+    await sendMessage({
+      type: 'discovery',
+      data: { discovery: null, proposal: null, configExists: false, configPhaseCount: 0, errors: ['No se encontró .mvc/discovery.json'] }
+    });
+    await openDiscoveryTab();
+
+    expect(container.textContent).toContain('No se encontró .mvc/discovery.json');
+    expect((findByText('Guardar fases') as HTMLButtonElement).disabled).toBe(true);
   });
 });

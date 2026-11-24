@@ -1,0 +1,42 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 24px;
+  color: #1f2933;
+}
+
+header,
+nav,
+section,
+footer {
+  margin-bottom: 16px;
+}
+
+nav a {
+  margin-right: 12px;
+}
+
+button,
+input {
+  font-size: 16px;
+  padding: 8px;
+}
+
+input {
+  display: block;
+  margin-bottom: 8px;
+}
+
+table {
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+
+th,
+td {
+  border: 1px solid #9aa5b1;
+  padding: 6px 12px;
+}
+
+[role='status'] {
+  color: #0b6e4f;
+}

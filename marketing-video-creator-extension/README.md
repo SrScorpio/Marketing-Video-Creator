@@ -79,6 +79,8 @@ Para probar en VS Code: `F5` (Run Extension) o `npx @vscode/test-cli`.
 3. Revisa o ajusta en el panel: `Abrir Panel` → **Configuración** (URL, voz, variante) y
    **Fases** (por fase: nombre, duración, URL, **guion** de la narración y **pasos de
    captura** en JSON). Botón **Guardar fases**.
+   Si no conoces la app, usa la pestaña **Descubrir**: recorre la URL configurada en
+   modo sólo lectura y propone las fases con los selectores reales observados.
 4. `Marketing Video Creator: Iniciar Demo` → el progreso se ve en la pestaña
    **Progreso** (barra + estado por fase + log de eventos).
 5. `Marketing Video Creator: Exportar Mobile` / `Exportar Desktop` → genera el MP4
@@ -95,6 +97,24 @@ Acciones soportadas en `steps`: `goto {url}`, `click {selector}`, `fill {selecto
 `press {selector,key}`, `waitForSelector {selector,timeoutMs}`, `wait {ms}`. Los pasos
 mal escritos se descartan con un aviso (no tumba la ejecución) y quedan registrados en
 el log del panel.
+
+### Descubrimiento automático (pestaña **Descubrir**)
+
+No hace falta escribir las pantallas a mano si la app está en marcha:
+
+| Paso | Qué ocurre |
+|---|---|
+| **Descubrir app** | Recorre la URL de `mvc-config.json` con Playwright en **sólo lectura**: mismo origen, límites `discovery.maxDepth`/`discovery.maxPages`, sin enviar formularios ni pulsar acciones destructivas. La UI muestra spinner, `n página(s) encontrada(s)` y la pantalla en curso; **Cancelar descubrimiento** detiene el recorrido sin escribir nada. |
+| Inventario | `.mvc/discovery.json` y `.mvc/discovery.md` (páginas, encabezados, acciones con selector estable, formularios, textos de estado, avisos y enlaces saltados). |
+| Propuesta | `.mvc/mvc-config.borrador.json` con fases `{id,label,duration,script,steps}`; los pasos usan **los selectores observados**, nunca inventados. |
+| Revisión | En la misma pestaña: páginas encontradas, contadores de acciones/formularios, avisos, enlaces saltados y editor de `label`/duración/guion (los selectores se muestran en sólo lectura). |
+| **Guardar fases** | Reutiliza `savePhases`. Si ya existe `mvc-config.json`, pide confirmación explícita antes de sobrescribirlo. |
+
+Comandos equivalentes sin panel: `Marketing Video Creator: Descubrir app (inventario de
+pantallas)` (`marketing-video-creator.discoverApp`, deja el inventario) y
+`Marketing Video Creator: Proponer fases desde el descubrimiento (borrador)`
+(`marketing-video-creator.proposePhases`, genera el borrador y pide confirmación modal
+para escribir `mvc-config.json`).
 
 ### Pack de prompts (`marketing-video-creator.createPromptPack`)
 
@@ -209,9 +229,13 @@ lee `extension-settings.ts` a mano y retira las claves que nadie consume.
 ## Tests y verificación
 
 ```bash
-npm test            # 118 tests: unitarios, contrato del manifiesto, esquema de config, cableado de ajustes, pack de prompts, requisitos externos, panel (jsdom) e integración con FFmpeg real
+npm test            # 215 tests: unitarios, contrato del manifiesto, esquema de config, cableado de ajustes, pack de prompts, descubrimiento (crawler, normalizador, convertidor, modelo y panel), requisitos externos, panel (jsdom) e integración con FFmpeg real
 npm run check:requirements # estado de FFmpeg/navegador/voz en esta máquina (mismo código que la extensión)
 npm run test:e2e    # E2E en Linux: navegador real + MP4 1920x1080 y 1080x1920 verificados con ffprobe
+npm run test:e2e:discovery            # crawler discoverApp contra la app local de prueba
+npm run test:e2e:discovery:normalize  # inventario normalizado + escritura de discovery.json/.md
+npm run test:e2e:discovery:phases     # convertidor discovery → borrador de fases
+npm run test:e2e:discovery:panel      # pestaña Descubrir: payload, edición, savePhases, cancelación
 npm run test:vscode # Extension Host: carga la extensión en un VS Code real (Linux sin display: xvfb-run -a)
 npm run package:vsix # genera el .vsix instalable
 ```
@@ -219,7 +243,8 @@ npm run package:vsix # genera el .vsix instalable
 | Nivel | Resultado verificado |
 |---|---|
 | `npm run compile` | limpio (tsc + `vite build`) |
-| `npm test` | 118/118 en 10 ficheros |
+| `npm test` | 215/215 en 15 ficheros |
+| `npm run test:e2e:discovery*` | 50 + 40 + 41 + 40 comprobaciones (crawler, normalizador, convertidor y panel) |
 | `npm run check:requirements` | verde en Linux; ❌ correcto cuando el navegador no está (probado con `PLAYWRIGHT_BROWSERS_PATH` vacío) |
 | `npm run test:e2e` | 18/18 comprobaciones |
 | `npm run test:vscode` | 7/7 en VS Code real (1.141.1), salida 0 — incluye la creación del pack de prompts en disco y la comprobación de los 8 comandos registrados |
