@@ -31,3 +31,16 @@ export {
   writeDiscoveryArtifacts
 } from './normalizer';
 export type { DiscoveryArtifacts, NormalizedDiscovery, NormalizeOptions } from './normalizer';
+export { DEFAULT_FIRST_DURATION, DEFAULT_MAX_PHASES, DEFAULT_PHASE_DURATION, DRAFT_SCRIPT_MARKER, discoveryToPhases, pageLabel, slugify } from './phases-proposer';
+export type { PhaseProposal, ProposeOptions } from './phases-proposer';
+export {
+  PHASES_DRAFT_FILE,
+  applyPhasesDraftToProjectConfig,
+  buildPhasesDraft,
+  discoveryPathOf,
+  phasesDraftPath,
+  readDiscoveryDoc,
+  writePhasesDraft
+} from './phases-draft';
+export type { ApplyDraftReason, ApplyDraftResult, DraftOptions } from './phases-draft';
+

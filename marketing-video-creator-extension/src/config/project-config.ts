@@ -11,12 +11,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ProjectConfig, ProjectConfigFile } from '../types/project-config';
 import { CONFIG_VERSION, DEFAULT_PHASES, normalizePhases, validateProjectConfig } from './project-schema';
+import { PROJECT_CONFIG_FILE, writeProjectConfigFile } from './config-file';
 import { createLogger } from '../utils/logger';
 
 export { CONFIG_VERSION, DEFAULT_PHASES, normalizePhases, parseCaptureSteps, validateProjectConfig } from './project-schema';
 
 const logger = createLogger('project-config');
-const CONFIG_FILE = 'mvc-config.json';
+const CONFIG_FILE = PROJECT_CONFIG_FILE;
 
 export function getConfigFilePath(workspaceFolder: vscode.WorkspaceFolder): string {
   return path.join(workspaceFolder.uri.fsPath, CONFIG_FILE);
@@ -60,19 +61,15 @@ export function saveProjectConfig(workspaceFolder: vscode.WorkspaceFolder, confi
     logger.warn(warning);
   }
 
-  const file: ProjectConfigFile = {
-    version: CONFIG_VERSION,
-    project: { ...config, phases }
-  };
-
-  try {
-    fs.writeFileSync(configPath, JSON.stringify(file, null, 2), 'utf-8');
-    logger.info('Configuración guardada en ' + configPath);
-    return true;
-  } catch (error) {
-    logger.error('Error al guardar mvc-config.json:', error);
+  // Misma serialización y misma escritura atómica que el convertidor de
+  // descubrimiento (`config-file.ts`): un único camino de escritura.
+  if (!writeProjectConfigFile(configPath, { ...config, phases })) {
+    logger.error('Error al guardar mvc-config.json: ' + configPath);
     return false;
   }
+
+  logger.info('Configuración guardada en ' + configPath);
+  return true;
 }
 
 export function createDefaultConfig(workspaceFolder: vscode.WorkspaceFolder, url: string): ProjectConfig {

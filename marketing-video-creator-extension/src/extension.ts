@@ -17,7 +17,19 @@ import {
   validateProjectConfig
 } from './config/project-config';
 import { PhaseManager } from './services/phase-manager';
-import { crawlApp, normalizeDiscovery, RawDiscovery, writeDiscoveryArtifacts } from './discovery';
+import {
+  applyPhasesDraftToProjectConfig,
+  buildPhasesDraft,
+  crawlApp,
+  discoveryPathOf,
+  discoveryToPhases,
+  normalizeDiscovery,
+  RawDiscovery,
+  readDiscoveryDoc,
+  writeDiscoveryArtifacts,
+  writePhasesDraft
+} from './discovery';
+
 import { createPipelineServices } from './config/pipeline-services';
 import { PROMPT_ENTRY_FILE, PROMPT_PACK } from './prompts/prompt-pack';
 import {
@@ -51,7 +63,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('marketing-video-creator.openOutputFolder', () => handleOpenOutputFolder()),
     vscode.commands.registerCommand('marketing-video-creator.createPromptPack', () => handleCreatePromptPack()),
     vscode.commands.registerCommand('marketing-video-creator.checkRequirements', () => handleCheckRequirements()),
-    vscode.commands.registerCommand('marketing-video-creator.discoverApp', () => handleDiscoverApp())
+    vscode.commands.registerCommand('marketing-video-creator.discoverApp', () => handleDiscoverApp()),
+    vscode.commands.registerCommand('marketing-video-creator.proposePhases', () => handleProposePhases())
   );
 }
 
@@ -382,6 +395,114 @@ async function handleDiscoverApp(): Promise<RawDiscovery | undefined> {
 }
 
 /* ------------------------------------------------------------------------- *
+ * Convertidor discovery → borrador de fases (SSS-282)
+ *
+ * A partir de `.mvc/discovery.json` propone fases ejecutables y SIEMPRE deja el
+ * borrador en `.mvc/mvc-config.borrador.json`. `mvc-config.json` sólo se escribe
+ * si el usuario confirma en el diálogo modal; esa escritura reutiliza el mismo
+ * serializador/escritura atómica que el caso `savePhases` del panel.
+ * ------------------------------------------------------------------------- */
+
+/** Botón del diálogo modal: sin pulsarlo, `mvc-config.json` no se toca. */
+const ACTION_WRITE_PHASES = 'Escribir fases';
+
+async function handleProposePhases(): Promise<void> {
+  const workspace = vscode.workspace.workspaceFolders?.[0];
+
+  if (!workspace) {
+    void vscode.window.showErrorMessage('Abre la carpeta del proyecto para proponer fases.');
+    return;
+  }
+
+  try {
+    const discovery = readDiscoveryDoc(discoveryPathOf(workspace.uri.fsPath));
+    const proposal = discoveryToPhases(discovery);
+
+    if (proposal.phases.length === 0) {
+      void vscode.window.showErrorMessage(
+        'El descubrimiento no tiene pantallas con las que proponer fases. Vuelve a lanzar «Descubrir app».'
+      );
+      return;
+    }
+
+    const draft = buildPhasesDraft(proposal, {
+      base: loadProjectConfig(workspace),
+      baseUrl: discovery.baseUrl
+    });
+    const draftPath = writePhasesDraft(workspace.uri.fsPath, draft);
+    const draftRelative = `.mvc/${path.basename(draftPath)}`;
+
+    for (const warning of proposal.warnings) {
+      logger.warn(warning);
+      postToPanel({ type: 'log', data: warning });
+    }
+
+    const resumen = `Borrador de ${proposal.phases.length} fase(s) en ${draftRelative} (${proposal.warnings.length} aviso(s)).`;
+    logger.info(resumen);
+    postToPanel({ type: 'log', data: resumen });
+
+    const result = await applyPhasesDraftToProjectConfig({
+      workspaceRoot: workspace.uri.fsPath,
+      draft,
+      confirm: async () => {
+        const action = await vscode.window.showWarningMessage(
+          `Borrador de ${proposal.phases.length} fase(s) generado en ${draftRelative}. ` +
+            '¿Escribir estas fases en mvc-config.json? Se reemplazan las fases actuales.',
+          { modal: true },
+          ACTION_WRITE_PHASES
+        );
+
+        return action === ACTION_WRITE_PHASES;
+      }
+    });
+
+    for (const warning of result.warnings) {
+      postToPanel({ type: 'log', data: warning });
+    }
+
+    if (result.reason === 'applied') {
+      postProjectState(workspace);
+      postToPanel({
+        type: 'log',
+        data: `${result.phases.length} fase(s) escritas en mvc-config.json. Revisa el guion [borrador] antes de grabar.`
+      });
+      void vscode.window.showInformationMessage(
+        `Marketing Video Creator: ${result.phases.length} fase(s) guardadas en mvc-config.json. Revisa el guion [borrador] antes de grabar.`
+      );
+      return;
+    }
+
+    if (result.reason === 'cancelled') {
+      postToPanel({ type: 'log', data: `mvc-config.json sin cambios; el borrador queda en ${draftRelative}.` });
+      void vscode.window.showInformationMessage(
+        `Marketing Video Creator: mvc-config.json sin cambios. El borrador queda en ${draftRelative}.`
+      );
+      return;
+    }
+
+    const detalle = result.warnings.length > 0 ? ` ${result.warnings.join(' ')}` : '';
+    void vscode.window.showErrorMessage(
+      `Marketing Video Creator: no se pudo aplicar el borrador (${result.reason}).${detalle}`
+    );
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+/** Envía al panel la configuración y el progreso reales (mismo mensaje que `savePhases`). */
+function postProjectState(workspace: vscode.WorkspaceFolder): void {
+  postToPanel({
+    type: 'settings',
+    data: {
+      settings: getExtensionSettings(),
+      project: loadProjectConfig(workspace),
+      progress: lastProgress,
+      running: phaseManager?.isRunning ?? false
+    }
+  });
+}
+
+/* ------------------------------------------------------------------------- *
  * Requisitos externos: FFmpeg/FFprobe, navegador de Playwright y voz.
  * Ninguno viaja en el VSIX, así que se comprueban antes de grabar para dar un
  * mensaje accionable en lugar del error crudo del binario que falta.
@@ -636,15 +757,19 @@ async function handleWebviewMessage(message: { type: string; data?: unknown }): 
 
         // Se devuelve lo realmente guardado para que el panel muestre lo que se
         // ha descartado (una fase sin id válido, unos pasos mal escritos...).
-        postToPanel({
-          type: 'settings',
-          data: {
-            settings: getExtensionSettings(),
-            project: saved ? existing : loadProjectConfig(workspace),
-            progress: lastProgress,
-            running: phaseManager?.isRunning ?? false
-          }
-        });
+        if (saved) {
+          postProjectState(workspace);
+        } else {
+          postToPanel({
+            type: 'settings',
+            data: {
+              settings: getExtensionSettings(),
+              project: loadProjectConfig(workspace),
+              progress: lastProgress,
+              running: phaseManager?.isRunning ?? false
+            }
+          });
+        }
         break;
       }
 
