@@ -294,6 +294,7 @@
     "test:vscode": "node ./scripts/vscode-test.mjs",
     "check:requirements": "node ./scripts/check-requirements.mjs",
     "test:e2e:discovery": "node ./scripts/e2e-discovery.mjs",
+    "test:e2e:discovery:normalize": "node ./scripts/e2e-discovery-normalize.mjs",
     "package:vsix": "vsce package"
   },
   "devDependencies": {

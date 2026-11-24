@@ -17,7 +17,7 @@ import {
   validateProjectConfig
 } from './config/project-config';
 import { PhaseManager } from './services/phase-manager';
-import { crawlApp, RawDiscovery } from './discovery';
+import { crawlApp, normalizeDiscovery, RawDiscovery, writeDiscoveryArtifacts } from './discovery';
 import { createPipelineServices } from './config/pipeline-services';
 import { PROMPT_ENTRY_FILE, PROMPT_PACK } from './prompts/prompt-pack';
 import {
@@ -280,10 +280,10 @@ async function handleCreatePromptPack(): Promise<void> {
 /* ------------------------------------------------------------------------- *
  * Descubrimiento automático de pantallas (SSS-282)
  *
- * Recorre la URL de `mvc-config.json` en modo SÓLO LECTURA y expone el
- * inventario crudo (contrato de `src/discovery/types.ts`). La persistencia a
- * `.mvc/discovery.json` / `.mvc/discovery.md` es otra tarea: aquí no se escribe
- * nada en disco.
+ * Recorre la URL de `mvc-config.json` en modo SÓLO LECTURA, normaliza el
+ * inventario y deja `.mvc/discovery.json` + `.mvc/discovery.md` listos para
+ * adjuntar como contexto en los prompts 01/03. Sólo escribe esos dos
+ * artefactos: el resto de `.mvc/` (guion, prompts, config) queda intacto.
  * ------------------------------------------------------------------------- */
 
 function getDiscoveryChannel(): vscode.OutputChannel {
@@ -351,20 +351,34 @@ async function handleDiscoverApp(): Promise<RawDiscovery | undefined> {
     return undefined;
   }
 
-  // Estructura cruda TAL CUAL: la consume la tarea de persistencia/normalización.
-  channel.appendLine(JSON.stringify(result, null, 2));
+  // Normalización pura (sin navegador) + escritura de los dos artefactos.
+  const normalized = normalizeDiscovery(result);
+  let artifactsText = '';
+
+  try {
+    const artifacts = writeDiscoveryArtifacts(normalized, path.join(workspace.uri.fsPath, '.mvc'));
+    artifactsText = ` Inventario en .mvc/${path.basename(artifacts.jsonPath)} y .mvc/${path.basename(artifacts.mdPath)}.`;
+    channel.appendLine(`Normalizado: ${artifacts.jsonPath}`);
+    channel.appendLine(`Markdown:   ${artifacts.mdPath}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    channel.appendLine(`No se pudo escribir .mvc/discovery.*: ${message}`);
+    logger.error(`No se pudo escribir el inventario normalizado: ${message}`);
+  }
+
+  channel.appendLine(JSON.stringify(normalized, null, 2));
   channel.appendLine(
-    `# Fin: ${result.stats.pageCount} pantalla(s), profundidad ${result.stats.depthReached}, ${result.stats.skipped.length} descartada(s), ${result.warnings.length} aviso(s).`
+    `# Fin: ${normalized.stats.pageCount} pantalla(s), profundidad ${normalized.stats.depthReached}, ${normalized.stats.skipped.length} descartada(s), ${normalized.warnings.length} aviso(s).`
   );
 
-  const resumen = `Descubrimiento: ${result.stats.pageCount} pantalla(s), ${result.stats.skipped.length} enlace(s) descartado(s), ${result.warnings.length} aviso(s).`;
+  const resumen = `Descubrimiento: ${normalized.stats.pageCount} pantalla(s), ${normalized.stats.skipped.length} enlace(s) descartado(s), ${normalized.warnings.length} aviso(s).`;
   logger.info(resumen);
   postToPanel({ type: 'log', data: resumen });
   void vscode.window.showInformationMessage(
-    `${resumen} Inventario en el canal "Marketing Video Creator — Descubrimiento".`
+    `${resumen}${artifactsText} Adjúntalos al chat (#file:.mvc/discovery.md) o míralos en el canal "Marketing Video Creator — Descubrimiento".`
   );
 
-  return result;
+  return normalized;
 }
 
 /* ------------------------------------------------------------------------- *
