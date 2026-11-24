@@ -23,13 +23,15 @@ import {
   crawlApp,
   discoveryPathOf,
   discoveryToPhases,
+  loadDiscoveryPanelPayload,
   normalizeDiscovery,
+  NormalizedDiscovery,
   RawDiscovery,
   readDiscoveryDoc,
   writeDiscoveryArtifacts,
-  writePhasesDraft
+  writePhasesDraft,
+  writeProposalFromDiscovery
 } from './discovery';
-
 import { createPipelineServices } from './config/pipeline-services';
 import { PROMPT_ENTRY_FILE, PROMPT_PACK } from './prompts/prompt-pack';
 import {
@@ -49,6 +51,9 @@ let phaseManager: PhaseManager | undefined;
 let lastProgress: PhaseProgress = { status: 'idle', progress: 0, phases: [] };
 let extensionUri: vscode.Uri | undefined;
 let discoveryChannel: vscode.OutputChannel | undefined;
+/** Cancelación del descubrimiento pedida desde el panel (se consulta por página). */
+let discoveryCancelRequested = false;
+let discoveryRunning = false;
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionUri = context.extensionUri;
@@ -307,11 +312,11 @@ function getDiscoveryChannel(): vscode.OutputChannel {
   return discoveryChannel;
 }
 
-async function handleDiscoverApp(): Promise<RawDiscovery | undefined> {
+async function handleDiscoverApp(origin: 'command' | 'panel' = 'command'): Promise<RawDiscovery | undefined> {
   const workspace = vscode.workspace.workspaceFolders?.[0];
 
   if (!workspace) {
-    void vscode.window.showErrorMessage('Abre la carpeta del proyecto para descubrir la app.');
+    reportDiscoveryProblem(origin, 'Abre la carpeta del proyecto para descubrir la app.');
     return undefined;
   }
 
@@ -319,7 +324,8 @@ async function handleDiscoverApp(): Promise<RawDiscovery | undefined> {
   const url = (project?.url ?? '').trim();
 
   if (!url) {
-    void vscode.window.showErrorMessage(
+    reportDiscoveryProblem(
+      origin,
       'Configura primero la URL de la app (pestaña Configuración) y vuelve a lanzar el descubrimiento.'
     );
     return undefined;
@@ -331,36 +337,81 @@ async function handleDiscoverApp(): Promise<RawDiscovery | undefined> {
   channel.appendLine(`# Descubrimiento ${new Date().toISOString()}`);
   channel.appendLine(`URL: ${url} · maxDepth: ${settings.discoveryMaxDepth} · maxPages: ${settings.discoveryMaxPages}`);
 
-  const result = await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: 'Marketing Video Creator: descubriendo pantallas',
-      cancellable: true
-    },
-    async (progress, token): Promise<RawDiscovery | undefined> => {
-      try {
-        return await crawlApp({
-          url,
-          maxDepth: settings.discoveryMaxDepth,
-          maxPages: settings.discoveryMaxPages,
-          headless: settings.playwrightHeadless,
-          executablePath: settings.playwrightBrowserPath.trim() || undefined,
-          storageStatePath: settings.discoveryStorageState.trim() || undefined,
-          repoRoot: workspace.uri.fsPath,
-          isCancelled: () => token.isCancellationRequested,
-          onPage: (page, info) => {
-            progress.report({ message: `${info.index}: ${page.title || page.path}` });
-            channel.appendLine(`  · (${info.index}) ${page.path} — ${page.title}`);
-          }
-        });
-      } catch (error) {
-        reportError(error);
-        return undefined;
+  discoveryCancelRequested = false;
+  discoveryRunning = true;
+
+  // El progreso se pinta en el panel y/o en la notificación según el origen.
+  let notify: (message: string) => void = () => undefined;
+
+  const crawl = () =>
+    crawlApp({
+      url,
+      maxDepth: settings.discoveryMaxDepth,
+      maxPages: settings.discoveryMaxPages,
+      headless: settings.playwrightHeadless,
+      executablePath: settings.playwrightBrowserPath.trim() || undefined,
+      storageStatePath: settings.discoveryStorageState.trim() || undefined,
+      repoRoot: workspace.uri.fsPath,
+      isCancelled: () => discoveryCancelRequested,
+      onPage: (page, info) => {
+        channel.appendLine(`  · (${info.index}) ${page.path} — ${page.title}`);
+        notify(`${info.index}: ${page.title || page.path}`);
+        postDiscoveryProgress({ status: 'running', pagesFound: info.index, currentPage: page.path });
       }
+    });
+
+  let result: RawDiscovery | undefined;
+
+  try {
+    if (origin === 'panel') {
+      postDiscoveryProgress({ status: 'running', pagesFound: 0 });
+      result = await crawl();
+    } else {
+      result = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Marketing Video Creator: descubriendo pantallas',
+          cancellable: true
+        },
+        async (progress, token): Promise<RawDiscovery | undefined> => {
+          notify = message => progress.report({ message });
+          token.onCancellationRequested(() => {
+            discoveryCancelRequested = true;
+          });
+
+          try {
+            return await crawl();
+          } catch (error) {
+            reportError(error);
+            return undefined;
+          }
+        }
+      );
     }
-  );
+  } catch (error) {
+    discoveryRunning = false;
+    reportDiscoveryProblem(origin, error instanceof Error ? error.message : String(error));
+    return undefined;
+  } finally {
+    discoveryRunning = false;
+  }
 
   if (!result) {
+    reportDiscoveryProblem(origin, 'El descubrimiento no ha devuelto ninguna pantalla.');
+    return undefined;
+  }
+
+  // Cancelado: se respeta lo que hubiera antes y NO se escribe un inventario parcial.
+  if (discoveryCancelRequested) {
+    const message = `Descubrimiento cancelado: ${result.pages.length} página(s) leídas, no se ha escrito el inventario.`;
+    channel.appendLine(`# ${message}`);
+    postDiscoveryProgress({
+      status: 'cancelled',
+      pagesFound: result.pages.length,
+      message: 'Descubrimiento cancelado.'
+    });
+    postToPanel({ type: 'log', data: message });
+    postDiscoveryPayload();
     return undefined;
   }
 
@@ -379,6 +430,11 @@ async function handleDiscoverApp(): Promise<RawDiscovery | undefined> {
     logger.error(`No se pudo escribir el inventario normalizado: ${message}`);
   }
 
+  // Panel: al terminar el inventario se propone el borrador de fases.
+  if (origin === 'panel') {
+    artifactsText += generatePhasesDraft(normalized, workspace, channel);
+  }
+
   channel.appendLine(JSON.stringify(normalized, null, 2));
   channel.appendLine(
     `# Fin: ${normalized.stats.pageCount} pantalla(s), profundidad ${normalized.stats.depthReached}, ${normalized.stats.skipped.length} descartada(s), ${normalized.warnings.length} aviso(s).`
@@ -387,11 +443,92 @@ async function handleDiscoverApp(): Promise<RawDiscovery | undefined> {
   const resumen = `Descubrimiento: ${normalized.stats.pageCount} pantalla(s), ${normalized.stats.skipped.length} enlace(s) descartado(s), ${normalized.warnings.length} aviso(s).`;
   logger.info(resumen);
   postToPanel({ type: 'log', data: resumen });
-  void vscode.window.showInformationMessage(
-    `${resumen}${artifactsText} Adjúntalos al chat (#file:.mvc/discovery.md) o míralos en el canal "Marketing Video Creator — Descubrimiento".`
-  );
+
+  // El panel refresca páginas + propuesta (el borrador lo escribe el convertidor).
+  postDiscoveryProgress({ status: 'idle', pagesFound: normalized.stats.pageCount });
+  postDiscoveryPayload();
+
+  if (origin === 'command') {
+    void vscode.window.showInformationMessage(
+      `${resumen}${artifactsText} Adjúntalos al chat (#file:.mvc/discovery.md) o míralos en el canal "Marketing Video Creator — Descubrimiento".`
+    );
+  }
 
   return normalized;
+}
+
+/**
+ * Genera `.mvc/mvc-config.borrador.json` a partir del inventario recién escrito.
+ *
+ * Sólo escribe el borrador: `mvc-config.json` NUNCA se toca aquí. El usuario lo
+ * confirma en el panel (Guardar fases) o en el diálogo modal del comando
+ * `proposePhases`; ambos caminos reutilizan el mismo caso `savePhases`.
+ */
+function generatePhasesDraft(
+  discovery: NormalizedDiscovery,
+  workspace: vscode.WorkspaceFolder,
+  channel: vscode.OutputChannel
+): string {
+  try {
+    const result = writeProposalFromDiscovery(discovery, workspace.uri.fsPath, {
+      base: loadProjectConfig(workspace)
+    });
+
+    if (result.phaseCount === 0) {
+      channel.appendLine('Convertidor: el inventario no permite proponer fases.');
+      postToPanel({ type: 'log', data: 'El inventario no permite proponer fases: revisa los avisos.' });
+      return '';
+    }
+
+    channel.appendLine(
+      `Borrador: ${result.filePath} (${result.phaseCount} fase(s), ${result.warnings.length} aviso(s))`
+    );
+
+    for (const warning of result.warnings) {
+      postToPanel({ type: 'log', data: warning });
+    }
+
+    return ` Borrador de ${result.phaseCount} fase(s) en .mvc/${path.basename(result.filePath)}.`;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    channel.appendLine(`No se pudo generar el borrador de fases: ${message}`);
+    logger.warn(`Borrador de fases: ${message}`);
+    postToPanel({ type: 'log', data: `No se pudo generar el borrador de fases: ${message}` });
+    return '';
+  }
+}
+
+/** Aviso de descubrimiento: al panel (progreso + log) y al usuario si vino del comando. */
+function reportDiscoveryProblem(origin: 'command' | 'panel', message: string): void {
+  logger.warn(`Descubrimiento: ${message}`);
+  postDiscoveryProgress({ status: 'error', pagesFound: 0, message });
+  postToPanel({ type: 'log', data: `Descubrimiento: ${message}` });
+  getDiscoveryChannel().appendLine(`# Error: ${message}`);
+
+  if (origin === 'command') {
+    void vscode.window.showErrorMessage(`Marketing Video Creator: ${message}`);
+  }
+}
+
+/** Envía al panel el resumen de `.mvc/discovery.json` y la propuesta de fases. */
+function postDiscoveryPayload(): void {
+  const workspace = vscode.workspace.workspaceFolders?.[0];
+
+  if (!workspace) {
+    postToPanel({ type: 'discovery', data: loadDiscoveryPanelPayload(process.cwd()) });
+    return;
+  }
+
+  postToPanel({ type: 'discovery', data: loadDiscoveryPanelPayload(workspace.uri.fsPath) });
+}
+
+function postDiscoveryProgress(data: {
+  status: 'idle' | 'running' | 'cancelled' | 'error';
+  pagesFound: number;
+  currentPage?: string;
+  message?: string;
+}): void {
+  postToPanel({ type: 'discoveryProgress', data });
 }
 
 /* ------------------------------------------------------------------------- *
@@ -699,6 +836,28 @@ async function handleWebviewMessage(message: { type: string; data?: unknown }): 
             running: phaseManager?.isRunning ?? false
           }
         });
+        postDiscoveryPayload();
+        break;
+      }
+
+      case 'loadDiscovery': {
+        postDiscoveryPayload();
+        break;
+      }
+
+      case 'discoverApp': {
+        await handleDiscoverApp('panel');
+        break;
+      }
+
+      case 'cancelDiscovery': {
+        if (!discoveryRunning) {
+          postToPanel({ type: 'log', data: 'No hay ningún descubrimiento en curso.' });
+          break;
+        }
+
+        discoveryCancelRequested = true;
+        postToPanel({ type: 'log', data: 'Cancelación solicitada: el recorrido se detendrá al acabar la página actual.' });
         break;
       }
 

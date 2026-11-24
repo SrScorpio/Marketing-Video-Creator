@@ -302,6 +302,7 @@
     "test:e2e:discovery": "node ./scripts/e2e-discovery.mjs",
     "test:e2e:discovery:normalize": "node ./scripts/e2e-discovery-normalize.mjs",
     "test:e2e:discovery:phases": "node ./scripts/e2e-discovery-phases.mjs",
+    "test:e2e:discovery:panel": "node ./scripts/e2e-discovery-panel.mjs",
     "package:vsix": "vsce package"
   },
   "devDependencies": {

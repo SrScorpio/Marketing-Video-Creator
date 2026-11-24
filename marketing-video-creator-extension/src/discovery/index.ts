@@ -43,4 +43,23 @@ export {
   writePhasesDraft
 } from './phases-draft';
 export type { ApplyDraftReason, ApplyDraftResult, DraftOptions } from './phases-draft';
-
+export {
+  DISCOVERY_FILE_NAME,
+  PROPOSAL_FILE_NAME,
+  PROJECT_CONFIG_FILE_NAME,
+  loadDiscoveryPanelPayload,
+  phaseProposalToSavePayload,
+  readProposal,
+  summarizeDiscovery,
+  writeProposalFromDiscovery
+} from './panel-model';
+export type {
+  DiscoveryActionView,
+  DiscoveryFormView,
+  DiscoveryPageView,
+  DiscoveryPanelPayload,
+  DiscoveryView,
+  PhaseProposalView,
+  ProposalStepView,
+  ProposalView
+} from './panel-model';
