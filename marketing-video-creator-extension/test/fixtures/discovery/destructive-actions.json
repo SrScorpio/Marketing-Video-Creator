@@ -1,0 +1,32 @@
+{
+  "sensitive": [
+    "Cancelar cuenta",
+    "Anular pedido",
+    "Desactivar usuario",
+    "Cerrar sesión",
+    "Cerrar sesion",
+    "Salir",
+    "Logout",
+    "Eliminar cliente",
+    "Pagar ahora",
+    "Comprar plan",
+    "Borrar ficha",
+    "Dar de baja",
+    "Restablecer contraseña",
+    "Archivar cliente"
+  ],
+  "safe": [
+    "Abrir ayuda",
+    "Ver más",
+    "Descargar informe",
+    "Nuevo cliente",
+    "Guardar",
+    "Crear ficha",
+    "Buscar",
+    "Filtrar",
+    "Volver",
+    "Siguiente",
+    "Añadir al carrito",
+    "Compartir ficha"
+  ]
+}
