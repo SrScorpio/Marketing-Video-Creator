@@ -17,7 +17,7 @@
 
 import { CaptureStep, PhaseConfig } from '../types/phase';
 import { isValidDuration, isValidPhaseId } from '../utils/validators';
-import { isDestructiveAction } from './crawler';
+import { isDestructiveAction } from './destructive';
 import { isUnstableSelector } from './normalizer';
 import { DiscoveryElement, DiscoveryPage, RawDiscovery, SelectorStrategy } from './types';
 

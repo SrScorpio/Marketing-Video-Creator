@@ -38,9 +38,9 @@ import {
 
 const logger = createLogger('discovery');
 
-/** Heurística de acción peligrosa. El crawler NUNCA pulsa, pero la usan las
- *  fases posteriores para no grabar clics destructivos o de pago. */
-const DESTRUCTIVE_PATTERN = /(pagar|comprar|borrar|eliminar|delete|pay|checkout|subscribe|suscrib)/i;
+/** Heurística de acción peligrosa: patrón ÚNICO en `destructive.ts` (lo comparte
+ *  el convertidor a fases). El crawler NUNCA pulsa. */
+export { DESTRUCTIVE_PATTERN, isDestructiveAction } from './destructive';
 
 export interface LinkDecision {
   action: 'enqueue' | 'skip';
@@ -100,10 +100,6 @@ export function pathOf(url: string): string {
   } catch {
     return url;
   }
-}
-
-export function isDestructiveAction(text: string): boolean {
-  return DESTRUCTIVE_PATTERN.test(String(text ?? ''));
 }
 
 /**

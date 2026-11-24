@@ -8,15 +8,24 @@
  *
  * Reglas que aplica (y que fijan los tests de `test/discovery-normalizer.test.ts`):
  *   - Dedupe de elementos por selector; el primero gana salvo que no tenga texto
- *     y un duplicado sí (mismo control repetido por el lector de página).
+ *     y un duplicado sí (mismo control repetido por el lector de página). Si dos
+ *     controles de origen distinto colapsan en el mismo selector al reescribir,
+ *     queda uno y se avisa de la colisión.
  *   - Selectores inestables fuera: clases autogeneradas (`css-1x2y3z`, `sc-…`,
  *     `jsx-…`, hashes) y posicionales (`:nth-of-type`, `:nth-child`, `>`). Si el
  *     elemento tiene texto y un rol conocido, se REESCRIBE a `role=<rol>[name=…]`;
- *     si no hay alternativa, se descarta y se anota en `warnings`.
+ *     si vive dentro de un formulario, el selector se cualifica con el ámbito
+ *     (`form >> role=…`) para no caer en un control homónimo de fuera. Si no hay
+ *     alternativa, se descarta y se anota en `warnings`.
  *   - `selectorStrategy` se RECALCULA desde el selector: nunca se hereda del
- *     crudo. `css` queda sólo cuando no hay id/testid/aria-label/rol+nombre.
- *   - Rutas normalizadas (`/path[?query]`, sin hash, sin dobles barras, sin
- *     barra final), páginas ordenadas por path y duplicados descartados.
+ *     crudo. `css` queda sólo cuando no hay id (también compuesto, `button#id`),
+ *     testid, aria-label ni rol+nombre.
+ *   - Rutas normalizadas (`/path[?query]`, sin hash, sin dobles barras en el
+ *     pathname —la query se conserva tal cual— y sin barra final), páginas
+ *     ordenadas por path y duplicados descartados.
+ *   - Formularios: campos deduplicados por selector y FORMULARIOS deduplicados
+ *     antes de poner la etiqueta por defecto (`formulario N` conserva el índice
+ *     original), de modo que dos formularios idénticos sin etiqueta quedan uno.
  *   - `stats.pageCount` se recalcula; `skipped` se deduplica y ordena.
  *   - La función es PURA: no muta la entrada y el reloj se inyecta (`now`).
  *
@@ -118,7 +127,11 @@ function normalizeBaseUrl(url: string): string {
   }
 }
 
-/** `pathname + search`, sin hash, con barra inicial y sin barra final. */
+/**
+ * `pathname + search`, sin hash, con barra inicial, sin barra final en el
+ * pathname y SIN tocar la query: `?next=http://…` conserva sus `//` (el
+ * colapso de barras se aplica sólo al pathname).
+ */
 function normalizePath(rawPath: string, url: string): string {
   let value = clean(rawPath, 600);
 
@@ -131,14 +144,30 @@ function normalizePath(rawPath: string, url: string): string {
     }
   }
 
-  value = value.replace(/#.*$/, '').replace(/\/{2,}/g, '/');
-  if (!value.startsWith('/')) {
-    value = `/${value}`;
+  // Si llega una URL absoluta por error, se queda su pathname + search.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+    try {
+      const parsed = new URL(value);
+      value = `${parsed.pathname}${parsed.search}`;
+    } catch {
+      /* se normaliza como texto */
+    }
   }
-  if (value.length > 1 && value.endsWith('/')) {
-    value = value.slice(0, -1);
+
+  value = value.replace(/#.*$/, '');
+
+  const queryAt = value.indexOf('?');
+  let pathname = queryAt >= 0 ? value.slice(0, queryAt) : value;
+  const search = queryAt >= 0 ? value.slice(queryAt) : '';
+
+  pathname = pathname.replace(/\/{2,}/g, '/');
+  if (!pathname.startsWith('/')) {
+    pathname = `/${pathname}`;
   }
-  return value;
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    pathname = pathname.slice(0, -1);
+  }
+  return `${pathname}${search}`;
 }
 
 function compareText(left: string, right: string): number {
@@ -215,11 +244,16 @@ export function isUnstableSelector(selector: string): boolean {
   return classTokens(value).some(token => !isStableClassToken(token));
 }
 
+/** Compuesto simple: sin combinadores (espacio, `>`, `+`, `~`). */
+const COMPOUND_SELECTOR = /^[^\s>+~]+$/;
+
 /** Estrategia REAL del selector; lo que diga el crudo se ignora. */
 export function selectorStrategyOf(selector: string): SelectorStrategy {
   const value = clean(selector, 600);
 
-  if (/^#[A-Za-z_][\w:.-]*$/.test(value) || /^\[id=/.test(value)) {
+  // `#id`, `[id=…]` o un compuesto anclado en id (`button#guardar`): el id
+  // sigue siendo el ancla más estable dentro del orden de preferencia.
+  if (/^\[id=/.test(value) || (COMPOUND_SELECTOR.test(value) && idTokens(value).length > 0)) {
     return 'id';
   }
   if (/\[data-testid\s*=/.test(value)) {
@@ -272,6 +306,24 @@ interface PageCounters {
   rewritten: number;
   duplicates: number;
   unstableFields: number;
+  /** Selectores reescritos donde colapsaron DOS controles de origen distinto. */
+  collisions: string[];
+}
+
+/** Formulario normalizado SIN la etiqueta por defecto: el dedupe va antes. */
+interface NormalizedFormCore {
+  /** Etiqueta cruda ya limpia (puede ser ''). */
+  label: string;
+  fields: DiscoveryField[];
+}
+
+/** Elemento normalizado + la información de origen que necesita el dedupe. */
+interface NormalizedElement {
+  element: DiscoveryElement;
+  /** true si el selector se reescribió a `role+name`. */
+  rewritten: boolean;
+  /** Selector CRUDO: distingue «el mismo control leído dos veces» de una colisión. */
+  sourceSelector: string;
 }
 
 function normalizeHeading(raw: DiscoveryHeading): DiscoveryHeading | null {
@@ -295,7 +347,7 @@ function normalizeField(raw: DiscoveryField): DiscoveryField | null {
   };
 }
 
-function normalizeForm(raw: DiscoveryForm, index: number): DiscoveryForm {
+function normalizeForm(raw: DiscoveryForm): NormalizedFormCore {
   const seen = new Set<string>();
   const fields: DiscoveryField[] = [];
 
@@ -308,13 +360,13 @@ function normalizeForm(raw: DiscoveryForm, index: number): DiscoveryForm {
     fields.push(field);
   }
 
-  return {
-    label: clean(raw?.label, MAX_TEXT) || `formulario ${index + 1}`,
-    fields
-  };
+  // La etiqueta por defecto (`formulario N`) se pone DESPUÉS del dedupe: si se
+  // inyectara aquí, dos formularios idénticos sin etiqueta tendrían claves
+  // distintas y nunca se deduplicarían.
+  return { label: clean(raw?.label, MAX_TEXT), fields };
 }
 
-function normalizeElement(raw: DiscoveryElement, counters: PageCounters): DiscoveryElement | null {
+function normalizeElement(raw: DiscoveryElement, counters: PageCounters): NormalizedElement | null {
   const originalSelector = clean(raw?.selector, 600);
   if (!originalSelector) {
     return null;
@@ -328,19 +380,30 @@ function normalizeElement(raw: DiscoveryElement, counters: PageCounters): Discov
     const role = rewriteableRole(kind);
     if (text && role) {
       counters.rewritten += 1;
+      const rewritten = `role=${role}[name="${attrQuote(text)}"]`;
       return {
-        kind,
-        text,
-        selector: `role=${role}[name="${attrQuote(text)}"]`,
-        selectorStrategy: 'role+name',
-        formLabel
+        rewritten: true,
+        sourceSelector: originalSelector,
+        element: {
+          kind,
+          text,
+          // `form >> role=…` conserva el ámbito del formulario: un botón homónimo
+          // fuera del formulario no colisiona con este al grabar.
+          selector: formLabel ? `form >> ${rewritten}` : rewritten,
+          selectorStrategy: 'role+name',
+          formLabel
+        }
       };
     }
     counters.discarded += 1;
     return null;
   }
 
-  return { kind, text, selector: originalSelector, selectorStrategy: selectorStrategyOf(originalSelector), formLabel };
+  return {
+    rewritten: false,
+    sourceSelector: originalSelector,
+    element: { kind, text, selector: originalSelector, selectorStrategy: selectorStrategyOf(originalSelector), formLabel }
+  };
 }
 
 function normalizePage(raw: DiscoveryPage, counters: PageCounters): DiscoveryPage {
@@ -357,16 +420,26 @@ function normalizePage(raw: DiscoveryPage, counters: PageCounters): DiscoveryPag
 
   const elements: DiscoveryElement[] = [];
   const bySelector = new Map<string, number>();
+  /** Origen de cada elemento conservado (alineado con `elements`). */
+  const sources: Array<{ rewritten: boolean; sourceSelector: string }> = [];
 
   for (const item of Array.isArray(raw?.elements) ? raw.elements : []) {
-    const element = normalizeElement(item, counters);
-    if (!element) {
+    const normalized = normalizeElement(item, counters);
+    if (!normalized) {
       continue;
     }
+    const { element } = normalized;
 
     const existing = bySelector.get(element.selector);
     if (existing !== undefined) {
       counters.duplicates += 1;
+      const previous = sources[existing];
+      // Dos controles de ORIGEN distinto que colapsan al reescribir: el
+      // inventario pierde uno. Mismo selector crudo = el mismo control leído
+      // dos veces, que sí es un duplicado legítimo y no se avisa.
+      if (normalized.rewritten && previous.rewritten && previous.sourceSelector !== normalized.sourceSelector) {
+        counters.collisions.push(element.selector);
+      }
       // Mismo selector: gana el que aporta texto si el primero venía vacío.
       if (!elements[existing].text && element.text) {
         elements[existing] = { ...elements[existing], text: element.text, formLabel: elements[existing].formLabel ?? element.formLabel };
@@ -378,6 +451,7 @@ function normalizePage(raw: DiscoveryPage, counters: PageCounters): DiscoveryPag
       continue;
     }
     bySelector.set(element.selector, elements.length);
+    sources.push({ rewritten: normalized.rewritten, sourceSelector: normalized.sourceSelector });
     elements.push(element);
   }
 
@@ -385,12 +459,14 @@ function normalizePage(raw: DiscoveryPage, counters: PageCounters): DiscoveryPag
   const formsRaw = Array.isArray(raw?.forms) ? raw.forms : [];
   const seenForms = new Set<string>();
   for (const [index, item] of formsRaw.entries()) {
-    const form = normalizeForm(item, index);
-    const key = JSON.stringify(form);
+    const core = normalizeForm(item);
+    // Dedupe sobre la etiqueta CRUDA + campos, antes de la etiqueta por defecto.
+    const key = JSON.stringify(core);
     if (seenForms.has(key)) {
       continue;
     }
     seenForms.add(key);
+    const form: DiscoveryForm = { label: core.label || `formulario ${index + 1}`, fields: core.fields };
     forms.push(form);
     for (const field of form.fields) {
       if (isUnstableSelector(field.selector)) {
@@ -467,10 +543,10 @@ export function normalizeDiscovery(raw: RawDiscovery, options: NormalizeOptions 
 
   const pagesByPath = new Map<string, DiscoveryPage>();
   const rawPages = Array.isArray(source.pages) ? source.pages : [];
-  const emptyCounters: PageCounters = { discarded: 0, rewritten: 0, duplicates: 0, unstableFields: 0 };
+  const emptyCounters: PageCounters = { discarded: 0, rewritten: 0, duplicates: 0, unstableFields: 0, collisions: [] };
 
   for (const rawPage of rawPages) {
-    const counters: PageCounters = { ...emptyCounters };
+    const counters: PageCounters = { ...emptyCounters, collisions: [] };
     const page = normalizePage(rawPage, counters);
 
     const duplicate = pagesByPath.get(page.path);
@@ -494,6 +570,12 @@ export function normalizeDiscovery(raw: RawDiscovery, options: NormalizeOptions 
     if (counters.unstableFields > 0) {
       pushWarning(
         `normalización: ${page.path} — ${counters.unstableFields} campo(s) de formulario con selector inestable (revisar antes de grabar).`
+      );
+    }
+    if (counters.collisions.length > 0) {
+      const collided = Array.from(new Set(counters.collisions)).join(', ');
+      pushWarning(
+        `normalización: ${page.path} — colisión: ${counters.collisions.length} control(es) de origen distinto reescrito(s) al mismo selector (${collided}); desambigua el ámbito del formulario o el texto antes de grabar.`
       );
     }
   }
