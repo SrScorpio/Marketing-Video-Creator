@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Detalle de cliente — App de prueba</title>
+</head>
+<body>
+  <header>
+    <h1>Cliente 42</h1>
+    <h2>Datos de contacto</h2>
+  </header>
+
+  <main>
+    <section>
+      <a href="/informe.html" data-testid="ver-informe">Ver informe</a>
+      <a href="/index.html">Volver al inicio</a>
+    </section>
+
+    <form id="editar-cliente" aria-label="Editar cliente">
+      <label for="telefono">Teléfono</label>
+      <input id="telefono" name="telefono" type="tel" aria-required="true">
+
+      <input name="busqueda" type="search" placeholder="Buscar en el historial">
+
+      <button id="actualizar" type="submit">Actualizar</button>
+    </form>
+
+    <button aria-label="Eliminar cliente" type="button" onclick="fetch('/mutate', { method: 'POST' })">Eliminar</button>
+    <p role="status">Cambios sin guardar.</p>
+    <div role="alert">El teléfono es obligatorio.</div>
+  </main>
+</body>
+</html>

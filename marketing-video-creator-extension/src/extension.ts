@@ -17,6 +17,7 @@ import {
   validateProjectConfig
 } from './config/project-config';
 import { PhaseManager } from './services/phase-manager';
+import { crawlApp, RawDiscovery } from './discovery';
 import { createPipelineServices } from './config/pipeline-services';
 import { PROMPT_ENTRY_FILE, PROMPT_PACK } from './prompts/prompt-pack';
 import {
@@ -35,6 +36,7 @@ let currentPanel: vscode.WebviewPanel | undefined;
 let phaseManager: PhaseManager | undefined;
 let lastProgress: PhaseProgress = { status: 'idle', progress: 0, phases: [] };
 let extensionUri: vscode.Uri | undefined;
+let discoveryChannel: vscode.OutputChannel | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionUri = context.extensionUri;
@@ -48,12 +50,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('marketing-video-creator.exportDesktop', () => handleExport('desktop')),
     vscode.commands.registerCommand('marketing-video-creator.openOutputFolder', () => handleOpenOutputFolder()),
     vscode.commands.registerCommand('marketing-video-creator.createPromptPack', () => handleCreatePromptPack()),
-    vscode.commands.registerCommand('marketing-video-creator.checkRequirements', () => handleCheckRequirements())
+    vscode.commands.registerCommand('marketing-video-creator.checkRequirements', () => handleCheckRequirements()),
+    vscode.commands.registerCommand('marketing-video-creator.discoverApp', () => handleDiscoverApp())
   );
 }
 
 export function deactivate(): void {
   currentPanel?.dispose();
+  discoveryChannel?.dispose();
   logger.info('Marketing Video Creator desactivada');
 }
 
@@ -271,6 +275,96 @@ async function handleCreatePromptPack(): Promise<void> {
   void vscode.window.showInformationMessage(
     `${resumen} Adjúntalos al chat con #file:${PROMPT_ENTRY_FILE} y pide modo wizard o autónomo.`
   );
+}
+
+/* ------------------------------------------------------------------------- *
+ * Descubrimiento automático de pantallas (SSS-282)
+ *
+ * Recorre la URL de `mvc-config.json` en modo SÓLO LECTURA y expone el
+ * inventario crudo (contrato de `src/discovery/types.ts`). La persistencia a
+ * `.mvc/discovery.json` / `.mvc/discovery.md` es otra tarea: aquí no se escribe
+ * nada en disco.
+ * ------------------------------------------------------------------------- */
+
+function getDiscoveryChannel(): vscode.OutputChannel {
+  if (!discoveryChannel) {
+    discoveryChannel = vscode.window.createOutputChannel('Marketing Video Creator — Descubrimiento');
+  }
+
+  return discoveryChannel;
+}
+
+async function handleDiscoverApp(): Promise<RawDiscovery | undefined> {
+  const workspace = vscode.workspace.workspaceFolders?.[0];
+
+  if (!workspace) {
+    void vscode.window.showErrorMessage('Abre la carpeta del proyecto para descubrir la app.');
+    return undefined;
+  }
+
+  const project = loadProjectConfig(workspace);
+  const url = (project?.url ?? '').trim();
+
+  if (!url) {
+    void vscode.window.showErrorMessage(
+      'Configura primero la URL de la app (pestaña Configuración) y vuelve a lanzar el descubrimiento.'
+    );
+    return undefined;
+  }
+
+  const settings = getExtensionSettings();
+  const channel = getDiscoveryChannel();
+  channel.appendLine('');
+  channel.appendLine(`# Descubrimiento ${new Date().toISOString()}`);
+  channel.appendLine(`URL: ${url} · maxDepth: ${settings.discoveryMaxDepth} · maxPages: ${settings.discoveryMaxPages}`);
+
+  const result = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'Marketing Video Creator: descubriendo pantallas',
+      cancellable: true
+    },
+    async (progress, token): Promise<RawDiscovery | undefined> => {
+      try {
+        return await crawlApp({
+          url,
+          maxDepth: settings.discoveryMaxDepth,
+          maxPages: settings.discoveryMaxPages,
+          headless: settings.playwrightHeadless,
+          executablePath: settings.playwrightBrowserPath.trim() || undefined,
+          storageStatePath: settings.discoveryStorageState.trim() || undefined,
+          repoRoot: workspace.uri.fsPath,
+          isCancelled: () => token.isCancellationRequested,
+          onPage: (page, info) => {
+            progress.report({ message: `${info.index}: ${page.title || page.path}` });
+            channel.appendLine(`  · (${info.index}) ${page.path} — ${page.title}`);
+          }
+        });
+      } catch (error) {
+        reportError(error);
+        return undefined;
+      }
+    }
+  );
+
+  if (!result) {
+    return undefined;
+  }
+
+  // Estructura cruda TAL CUAL: la consume la tarea de persistencia/normalización.
+  channel.appendLine(JSON.stringify(result, null, 2));
+  channel.appendLine(
+    `# Fin: ${result.stats.pageCount} pantalla(s), profundidad ${result.stats.depthReached}, ${result.stats.skipped.length} descartada(s), ${result.warnings.length} aviso(s).`
+  );
+
+  const resumen = `Descubrimiento: ${result.stats.pageCount} pantalla(s), ${result.stats.skipped.length} enlace(s) descartado(s), ${result.warnings.length} aviso(s).`;
+  logger.info(resumen);
+  postToPanel({ type: 'log', data: resumen });
+  void vscode.window.showInformationMessage(
+    `${resumen} Inventario en el canal "Marketing Video Creator — Descubrimiento".`
+  );
+
+  return result;
 }
 
 /* ------------------------------------------------------------------------- *

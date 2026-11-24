@@ -30,7 +30,8 @@
     "onCommand:marketing-video-creator.exportDesktop",
     "onCommand:marketing-video-creator.openOutputFolder",
     "onCommand:marketing-video-creator.createPromptPack",
-    "onCommand:marketing-video-creator.checkRequirements"
+    "onCommand:marketing-video-creator.checkRequirements",
+    "onCommand:marketing-video-creator.discoverApp"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -74,6 +75,11 @@
         "command": "marketing-video-creator.checkRequirements",
         "title": "Marketing Video Creator: Comprobar requisitos (FFmpeg, navegador, voz)",
         "icon": "$(check-all)"
+      },
+      {
+        "command": "marketing-video-creator.discoverApp",
+        "title": "Marketing Video Creator: Descubrir app (inventario de pantallas)",
+        "icon": "$(search)"
       }
     ],
     "configuration": {
@@ -215,6 +221,21 @@
           "description": "Activar fases de vídeo (presentación, crear ficha, evaluación, etc.).",
           "default": true
         },
+        "marketingVideoCreator.discovery.maxDepth": {
+          "type": "number",
+          "description": "Profundidad máxima de enlaces que sigue el descubrimiento (0 = sólo la URL inicial).",
+          "default": 2
+        },
+        "marketingVideoCreator.discovery.maxPages": {
+          "type": "number",
+          "description": "Número máximo de pantallas que lee el descubrimiento automático (1-100).",
+          "default": 15
+        },
+        "marketingVideoCreator.discovery.storageState": {
+          "type": "string",
+          "description": "Ruta a un storageState de Playwright con la sesión de la app (apps con login). Debe estar FUERA del repositorio: contiene cookies de sesión.",
+          "default": ""
+        },
         "marketingVideoCreator.phases.list": {
           "type": "array",
           "description": "Lista de fases del vídeo demo.",
@@ -272,6 +293,7 @@
     "test:e2e": "node ./scripts/e2e-linux.mjs",
     "test:vscode": "node ./scripts/vscode-test.mjs",
     "check:requirements": "node ./scripts/check-requirements.mjs",
+    "test:e2e:discovery": "node ./scripts/e2e-discovery.mjs",
     "package:vsix": "vsce package"
   },
   "devDependencies": {

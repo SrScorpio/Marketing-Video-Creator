@@ -1,7 +1,10 @@
 # Agent working state
 .ralph/
 
+# Descubrimiento local (inventarios y storageState con cookies de sesión).
+# El storageState NUNCA debe vivir dentro del repositorio.
+.mvc/
+
 # OS
 .DS_Store
 Thumbs.db
-

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Inicio — App de prueba</title>
+</head>
+<body>
+  <header>
+    <h1 id="titulo-principal">Gestión de clientes</h1>
+    <h2>Resumen del día</h2>
+  </header>
+
+  <nav aria-label="Navegación principal">
+    <a href="/detalle.html" id="ir-detalle">Ver cliente</a>
+    <a href="https://externo.example.com/oferta">Oferta externa</a>
+    <a href="mailto:hola@example.com">Escríbenos</a>
+    <a href="#ayuda">Ayuda</a>
+  </nav>
+
+  <main>
+    <section id="seccion-alta">
+      <form id="alta-cliente" aria-label="Alta de cliente" action="/clientes" method="post">
+        <label for="nombre">Nombre</label>
+        <input id="nombre" name="nombre" type="text" required>
+
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email">
+
+        <label for="plan">Plan</label>
+        <select id="plan" name="plan">
+          <option>Básico</option>
+          <option>Pro</option>
+        </select>
+
+        <label for="notas">Notas</label>
+        <textarea id="notas" name="notas"></textarea>
+
+        <button id="guardar" type="submit">Guardar</button>
+        <button id="borrar" type="button" onclick="fetch('/mutate', { method: 'POST' })">Borrar cuenta</button>
+      </form>
+    </section>
+
+    <section>
+      <button id="pagar" type="button" onclick="fetch('/mutate', { method: 'POST' })">Pagar ahora</button>
+      <button aria-label="Abrir ayuda" type="button">?</button>
+      <button data-testid="abrir-detalle" type="button">Abrir detalle</button>
+      <span role="button" tabindex="0">Ver más</span>
+      <button class="btn-icono" type="button"><svg aria-hidden="true" width="12" height="12"></svg></button>
+    </section>
+
+    <p role="status">Todo listo para empezar.</p>
+    <div class="error" role="alert">Aviso de prueba</div>
+  </main>
+</body>
+</html>

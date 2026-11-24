@@ -32,6 +32,9 @@ export interface ExtensionSettings {
   variantMobileHeight: number;
   phasesEnabled: boolean;
   phasesList: Record<string, unknown>[];
+  discoveryMaxPages: number;
+  discoveryMaxDepth: number;
+  discoveryStorageState: string;
 }
 
 export function getExtensionSettings(): ExtensionSettings {
@@ -63,5 +66,8 @@ export function getExtensionSettings(): ExtensionSettings {
     variantMobileHeight: config.get('variants.mobile.height', 1920) as number,
     phasesEnabled: config.get('phases.enabled', true) as boolean,
     phasesList: config.get('phases.list', []) as Record<string, unknown>[],
+    discoveryMaxPages: config.get('discovery.maxPages', 15) as number,
+    discoveryMaxDepth: config.get('discovery.maxDepth', 2) as number,
+    discoveryStorageState: config.get('discovery.storageState', '') as string
   };
 }
