@@ -1,0 +1,88 @@
+{
+  "generatedAt": "ayer por la tarde",
+  "baseUrl": "http://app.test/#/inicio",
+  "pages": [
+    {
+      "url": "http://app.test/",
+      "path": "/",
+      "title": " Inicio ",
+      "headings": [{ "level": 1, "text": "Inicio" }],
+      "elements": [
+        { "kind": "link", "text": "Ayuda", "selector": "a[href=\"/ayuda\"]", "selectorStrategy": "id", "formLabel": null },
+        { "kind": "button", "text": "   ", "selector": "#sin-texto", "selectorStrategy": "css", "formLabel": "" }
+      ],
+      "forms": [],
+      "statusTexts": []
+    },
+    {
+      "url": "http://app.test/clientes/#tabla",
+      "path": "/clientes/",
+      "title": " Clientes ",
+      "headings": [
+        { "level": 1, "text": "Clientes" },
+        { "level": 2, "text": "   " }
+      ],
+      "elements": [
+        { "kind": "button", "text": "Nuevo cliente", "selector": "#nuevo-cliente", "selectorStrategy": "css", "formLabel": "" },
+        { "kind": "button", "text": "", "selector": "#nuevo-cliente", "selectorStrategy": "data-testid", "formLabel": "Alta de cliente" },
+        { "kind": "button", "text": "", "selector": "#icono-sin-texto", "selectorStrategy": "id", "formLabel": null },
+        { "kind": "button", "text": "Guardar", "selector": "button.css-1x2y3z", "selectorStrategy": "css", "formLabel": "Alta de cliente" },
+        { "kind": "button", "text": "", "selector": "div.sc-bdVaJa", "selectorStrategy": "css", "formLabel": null },
+        { "kind": "link", "text": "Ir a detalle", "selector": "a[href=\"/clientes/42\"]", "selectorStrategy": "role+name", "formLabel": null },
+        { "kind": "button", "text": "Ver más", "selector": "span:nth-of-type(2)", "selectorStrategy": "css", "formLabel": null },
+        { "kind": "button", "text": "Abrir panel", "selector": "button[aria-label=\"Abrir panel\"]", "selectorStrategy": "css", "formLabel": null },
+        { "kind": "select", "text": "Plan", "selector": "select[name=\"plan\"]", "selectorStrategy": "id", "formLabel": "Alta de cliente" },
+        { "kind": "status", "text": "3 clientes", "selector": "p.mensaje", "selectorStrategy": "css", "formLabel": null }
+      ],
+      "forms": [
+        {
+          "label": " Alta de cliente ",
+          "fields": [
+            { "label": " Nombre ", "type": "TEXT", "selector": "#nombre" },
+            { "label": "", "type": "text", "selector": "#nombre" },
+            { "label": "", "type": "text", "selector": "#apellidos" }
+          ]
+        },
+        { "label": "", "fields": [{ "label": "Plan", "type": "select", "selector": "#plan" }] },
+        { "label": "", "fields": [{ "label": "Plan", "type": "select", "selector": "#plan" }] },
+        {
+          "label": "Alta de cliente",
+          "fields": [{ "label": "Email", "type": "email", "selector": "form .campo-1a2b3c input" }]
+        }
+      ],
+      "statusTexts": ["Cargando…", " ", "Cargando…"]
+    },
+    {
+      "url": "http://app.test/clientes",
+      "path": "/clientes",
+      "title": "Clientes duplicada",
+      "headings": [],
+      "elements": [],
+      "forms": [],
+      "statusTexts": []
+    },
+    {
+      "url": "http://app.test/informe?tab=2#resumen",
+      "path": "/informe?tab=2",
+      "title": "Informe",
+      "headings": [{ "level": 1, "text": "Informe" }],
+      "elements": [
+        { "kind": "button", "text": "Descargar informe", "selector": "#descargar", "selectorStrategy": "id", "formLabel": null },
+        { "kind": "status", "text": "Informe listo.", "selector": "output.estado", "selectorStrategy": "css", "formLabel": null }
+      ],
+      "forms": [],
+      "statusTexts": ["Informe listo."]
+    }
+  ],
+  "stats": {
+    "pageCount": 99,
+    "depthReached": 3.7,
+    "skipped": [
+      { "url": "#ayuda", "reason": "ancla" },
+      { "url": "#ayuda", "reason": "ancla" },
+      { "url": "https://externo.test/x", "reason": "externo" },
+      { "url": "mailto:a@b.test", "reason": "inventado" }
+    ]
+  },
+  "warnings": ["lector: 1 nodo sin texto", "lector: 1 nodo sin texto", "   "]
+}

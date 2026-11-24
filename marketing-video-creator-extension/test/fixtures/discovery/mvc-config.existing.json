@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "proyecto-activo",
+    "url": "https://app.real/",
+    "outputDir": "./salida-real",
+    "variant": "mobile",
+    "phases": [
+      {
+        "id": "99-vieja",
+        "label": "Vieja",
+        "duration": 4
+      }
+    ]
+  }
+}
